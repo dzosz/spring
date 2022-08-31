@@ -36,7 +36,7 @@ include_directories(${ENGINE_SRC_ROOT_DIR}/lib/slimsig/include)
 
 ### Build the executable
 add_executable(engine-headless ${engineSources} ${ENGINE_ICON})
-target_link_libraries(engine-headless no-sound ${engineHeadlessLibraries} no-sound)
+target_link_libraries(engine-headless no-sound ${engineHeadlessLibraries} no-sound wayland-client wayland-cursor)
 
 if    (MINGW)
 	# To enable console output/force a console window to open

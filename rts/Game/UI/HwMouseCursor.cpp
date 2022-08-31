@@ -13,6 +13,12 @@
 #else
 	#include <X11/Xcursor/Xcursor.h>
 	#include <SDL_syswm.h>
+    #include <wayland-cursor.h>
+    #include <wayland-client.h>
+    #include <wayland-server-core.h>
+    #include <sys/mman.h>
+#include <unistd.h>
+#include <sys/types.h>
 #endif
 
 #include "HwMouseCursor.h"
@@ -30,9 +36,6 @@
 #endif
 
 #include <cstring> // memset
-
-
-
 
 //////////////////////////////////////////////////////////////////////
 // Platform dependent classes
@@ -153,16 +156,16 @@ public:
 	void Finish() override;
 
 	bool NeedsYFlip() const override { return false; }
-	bool IsValid() const override { return (cursor != 0); }
+    bool IsValid() const override { return (cursor != 0); }
 
 	void Init(CMouseCursor::HotSpot hs) override;
 	void Kill() override;
 	void Bind() override;
 
-private:
+public:
 	void resizeImage(XcursorImage*& image, const int new_x, const int new_y);
 
-private:
+public:
 	Cursor cursor = 0;
 	CMouseCursor::HotSpot hotSpot = CMouseCursor::Center;
 
@@ -174,24 +177,334 @@ private:
 	std::vector<XcursorImage*> cimages;
 };
 
-//TODO
+static void registry_global_remove(void *data, struct wl_registry *wl_registry, uint32_t name)
+{
+}
+
+static void registry_global(void *data, struct wl_registry *wl_registry,
+        uint32_t name, const char *interface, uint32_t version);
+
+static const struct wl_registry_listener registry_listener = {
+    .global = registry_global,
+    .global_remove = registry_global_remove,
+};
+
+static void
+wl_buffer_release(void *data, struct wl_buffer *wl_buffer)
+{
+    /* Sent by the compositor when it's no longer using this buffer */
+    // wl_buffer_destroy(wl_buffer);
+    // LOG("XYZ buffer release %p", wl_buffer);
+}
+
+static const struct wl_buffer_listener wl_buffer_listener = {
+    .release = wl_buffer_release,
+};
+
+
+
+void pointer_enter_handler ( void *data, struct wl_pointer *pointer, uint32_t serial, struct wl_surface *surface, wl_fixed_t x, wl_fixed_t y);
+
+void pointer_leave_handler ( void *data, struct wl_pointer *pointer, uint32_t serial, struct wl_surface *surface) {
+    LOG("XYZ LEAVE %p ", serial);
+}
+
+void pointer_motion_handler ( void *data, struct wl_pointer *pointer, uint32_t time, wl_fixed_t x, wl_fixed_t y) { }
+
+void pointer_button_handler ( void *data, struct wl_pointer *pointer, uint32_t serial, uint32_t time, uint32_t button, uint32_t state) {}
+
+void pointer_axis_handler ( void *data, struct wl_pointer *pointer, uint32_t time, uint32_t axis, wl_fixed_t value) { }
+
+void pointer_handle_frame(void *data, struct wl_pointer *pointer) {}
+void pointer_handle_axis_source(void *data, struct wl_pointer *pointer, uint32_t axis_source) {}
+void pointer_handle_axis_stop(void *data, struct wl_pointer *pointer, uint32_t time, uint32_t axis)  {}
+void pointer_handle_axis_discrete(void *data, struct wl_pointer *pointer, uint32_t axis, int32_t discrete) {}
+
+static void seat_handle_capabilities(void *data, struct wl_seat *seat, uint32_t caps);
+
+static void seat_handle_name(void *data, struct wl_seat *wl_seat, const char *name) {}
+
+static const struct wl_seat_listener seat_listener = {
+     seat_handle_capabilities,
+     seat_handle_name,           // Version 2
+ };
+
+ struct wl_pointer_listener pointer_listener = {
+    .enter = pointer_enter_handler,
+    .leave = pointer_leave_handler,
+    .motion = pointer_motion_handler,
+    .button = pointer_button_handler,
+    .axis = pointer_axis_handler,
+    pointer_handle_frame,           // Version 5
+     pointer_handle_axis_source,     // Version 5
+     pointer_handle_axis_stop,       // Version 5
+     pointer_handle_axis_discrete,
+};
+
+struct cursor_image {
+    wl_cursor_image image;
+    //struct wl_cursor_theme *theme;
+    wl_buffer *buffer;
+    uint8_t* data;
+    uint32_t offset; // data offset of this image in the shm pool
+    float delay;
+};
+
+
+struct WaylandHandler {
+    void preallocate(cursor_image& cur) {
+        auto stride = cur.image.width * 4;
+        auto size = cur.image.width * cur.image.height * 4;
+
+        if (ftruncate(this->fd, this->data_size + size)) {
+            LOG("XYZ ERR");
+            throw;
+        }
+
+        cur.data = static_cast<uint8_t*>(mmap(NULL, data_size + size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0));
+        if (cur.data == MAP_FAILED) {
+            LOG("XYZ ERR");
+            throw;
+        }
+
+        cur.offset = data_size;
+        LOG("XYZ preallocate %ld addr=%p", size, cur.data);
+        this->data_size += size;
+    }
+
+    void create_shared_image(cursor_image& cur) {
+        auto size = cur.image.width * cur.image.height * 4;
+        auto stride = cur.image.width * 4;
+
+        LOG("XYZ create_shared_image %ld addr=%p", size, cur.data);
+
+        auto* pool = wl_shm_create_pool(this->shm, this->fd, data_size);
+        cur.buffer = wl_shm_pool_create_buffer(pool, cur.offset,
+                      cur.image.width, cur.image.height, stride,
+                      WL_SHM_FORMAT_ARGB8888);
+        wl_shm_pool_destroy(pool);
+        // wl_buffer_add_listener(cur.buffer, &wl_buffer_listener, NULL);
+        munmap(cur.data, data_size);
+        cur.data = 0;
+    }
+
+    void show_cursor(cursor_image& cur) {
+        //LOG("XYZ show_cursor buf=%p", cur.buffer);
+        wl_surface_attach(this->surface, cur.buffer, 0, 0);
+        wl_surface_damage(surface, 0, 0, cur.image.width, cur.image.height);
+        wl_surface_commit(this->surface);
+        wl_pointer_set_cursor(this->pointer, this->serial, this->surface, 0, 0);
+        // LOG("XYZ show_cursor END", cur.buffer);
+    }
+
+    int fd = 0;
+    // uint8_t* data = nullptr;
+    uint32_t data_size = 0;
+
+    wl_display *display=0;
+    wl_compositor *compositor=0;
+    wl_shm *shm=0;
+    wl_seat *seat=0;
+    //wl_cursor_theme *theme;
+    wl_pointer* pointer=0;
+    wl_registry* registry=0;
+    wl_surface *surface=0;
+    uint32_t serial=0;
+
+    static WaylandHandler& getInstance() {
+        static WaylandHandler instance = WaylandHandler{};
+        return instance;
+    }
+private:
+    WaylandHandler() {
+
+        LOG("XYZ WaylandHandler()");
+        //this->display = wl_display_connect(NULL);
+        SDL_SysWMinfo info;
+        SDL_VERSION(&info.version);
+
+        if (SDL_GetWindowWMInfo(globalRendering->GetWindow(0), &info)) {
+            this->display = info.info.wl.display;
+        } else {
+            LOG("XYZ can't get wayland");
+             throw;
+         }
+        this->registry = wl_display_get_registry(this->display);
+        wl_registry_add_listener(this->registry, &registry_listener, this);
+        wl_display_roundtrip(this->display);
+
+        wl_seat_add_listener(this->seat, &seat_listener, this);
+        wl_seat_set_user_data(this->seat, this);
+
+        //this->pointer = wl_seat_get_pointer(this->seat);
+        wl_pointer_add_listener(this->pointer, &pointer_listener, this);
+
+        this->surface = wl_compositor_create_surface(this->compositor);
+        LOG("XYZ WaylandHandler() done");
+
+        static auto fd = memfd_create("test_spring123", 0);
+        this->fd = fd;
+        //this->fd = shm_open("test_spring", O_RDWR
+    }
+};
+
+void pointer_enter_handler ( void *data, struct wl_pointer *pointer, uint32_t serial, struct wl_surface *surface, wl_fixed_t x, wl_fixed_t y) {
+    // !mouse->offscreen
+    LOG("XYZ pointer_enter_handler %p", serial);
+    auto* handler = static_cast<WaylandHandler*>(data);
+    handler->serial=serial;
+    int hotx = 0; // TODO
+    int hoty = 0; // TODO
+    // wl_pointer_set_cursor(handler->pointer, serial, handler->surface, hotx, hoty);
+    LOG("XYZ pointer_enter_handler DONE");
+}
+
+static void seat_handle_capabilities(void *data, struct wl_seat *seat, uint32_t caps) {
+    auto* handler = static_cast<WaylandHandler*>(data);
+    if ((caps & WL_SEAT_CAPABILITY_POINTER) && !handler->pointer) {
+        handler->pointer = wl_seat_get_pointer(seat);
+    }
+}
+
 class HardwareCursorWayland : public IHardwareCursor {
 public:
-	void PushImage(int xsize, int ysize, const void* mem) override {}
-	void PushFrame(int index, float delay) override {}
-	void SetDelay(float delay) override {}
-	void SetHotSpot(CMouseCursor::HotSpot hs) override {}
-	void Finish() override {}
+    HardwareCursorWayland() : whandler(WaylandHandler::getInstance()) {}
+
+    void PushImage(int xsize, int ysize, const void* mem) override {
+        return;
+        auto cur = cursor_image{ wl_cursor_image {(uint32_t)xsize, (uint32_t)ysize, 0, 0, 0 }, nullptr, nullptr, 0, CMouseCursor::DEF_FRAME_LENGTH};
+        whandler.preallocate(cur);
+        uint8_t* dst = cur.data + cur.offset;
+        const uint8_t* src = static_cast<const uint8_t*>(mem);
+        const uint8_t* end = src + xsize * ysize * 4;
+
+        do {
+            dst[0] = src[2];      // B
+            dst[1] = src[1];      // G
+            dst[2] = src[0];      // R
+            dst[3] = src[3];      // A
+            dst += 4;
+            src += 4;
+        } while (src < end);
+
+        whandler.create_shared_image(cur);
+        wimages.push_back(cur);
+        LOG("XYZ DONE PushImage");
+    }
+
+	void PushFrame(int index, float delay) override {
+        if (index >= wimages.size()) {
+            return;
+        }
+
+        auto& elem = wimages[index];
+        if (elem.delay != delay) {
+            this->wimages.push_back(elem);
+            //this->PushImage(elem.image.width, elem.image.height, elem.data);
+            this->SetDelay(delay);
+        }
+
+    }
+
+    void Update(float animTime) override {
+        LOG("Update %f of %f", animTime, total_delay);
+        animTime = fmod(animTime, this->total_delay);
+        float total = 0;
+        auto elem = wimages.begin();
+        while (elem != wimages.end()) {
+            total += elem->delay;
+            if (total > animTime) {
+                whandler.show_cursor(*elem);
+                break;
+            }
+            std::advance(elem, 1);
+        }
+
+    }
+
+
+    void SetDelay(float delay) override {
+        if (!wimages.empty()) {
+            wimages.back().delay = delay;
+        }
+    }
+    void SetHotSpot(CMouseCursor::HotSpot hs) override {
+        hotSpot = hs;
+    }
+    void Finish() override {
+        LOG("XYZ FINISH");        
+        for (auto &c : wimages) {
+
+            this->total_delay += c.delay;
+            // c.image.hotspot_x = (hotSpot == CMouseCursor::TopLeft) ? 0 : xmaxsize / 2;
+            // c.image.hotspot_y == CMouseCursor::TopLeft) ? 0 : ymaxsize / 2;
+            // LOG("XYZ fd=%i data=%p size=%u data_size=%zu RESIZED=%zu", fd, cur.data, size, this->data_size, this->data_size + size);
+
+        }
+        //cursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_HAND);
+        //if (!cursor) {
+        //    LOG_L(L_WARNING, "[%s::%s] Can't create Wayland HWCursor", spring::TypeToCStr<decltype(*this)>(), __func__);
+        //    return;
+        //}
+    }
 
 	bool NeedsYFlip() const override { return false; }
-	bool IsValid() const override { return false; }
+    bool IsValid() const override { return !wimages.empty();}
 
 	void Init(CMouseCursor::HotSpot hs) override {
-		LOG_L(L_WARNING, "[%s::%s] Hardware cursor for wayland is disabled", spring::TypeToCStr<decltype(*this)>(), __func__);
-	}
-	void Kill() override {}
-	void Bind() override {}
+         LOG_L(L_WARNING, "XYZ Init");
+    }
+
+	void Kill() override {
+        LOG_L(L_WARNING, "XYZ Kill");
+        this->wimages.clear();
+        //if (cursor)
+        //    SDL_FreeCursor(cursor);
+        //if (surface)
+        //    SDL_FreeSurface(surface);
+
+        //cursor = nullptr;
+        //surface = nullptr;
+    }
+
+    void Bind() override {
+        LOG_L(L_WARNING, "XYZ Bind %i", wimages.size());
+        if (wimages.size()) {
+            SDL_ShowCursor(SDL_ENABLE);
+            whandler.show_cursor(wimages[0]);
+            LOG_L(L_WARNING, "XYZ Bind END");
+        }
+    }
+
+public:
+    std::vector<cursor_image> wimages;
+    WaylandHandler& whandler;
+    CMouseCursor::HotSpot hotSpot;
+    float total_delay=0;
 };
+
+static void registry_global(void *data, struct wl_registry *wl_registry,
+        uint32_t name, const char *interface, uint32_t version)
+{
+    auto* state = static_cast<WaylandHandler*>(data);
+    if (strcmp(interface, wl_shm_interface.name) == 0) {
+        state->shm = static_cast<wl_shm*>(wl_registry_bind(
+                wl_registry, name, &wl_shm_interface, version));
+    } else if (strcmp(interface, wl_compositor_interface.name) == 0) {
+        state->compositor = static_cast<wl_compositor*>(wl_registry_bind(
+                wl_registry, name, &wl_compositor_interface, version));
+    } else if (strcmp(interface, wl_seat_interface.name) == 0) {
+        state->seat = static_cast<wl_seat*>(wl_registry_bind(wl_registry, name,
+            &wl_seat_interface, version));
+    }
+    /*
+    else if (strcmp(interface, wl_pointer_interface.name) == 0) {
+        state->pointer = static_cast<wl_pointer*>(wl_registry_bind(wl_registry, name, &wl_seat_interface, 1));
+    } */
+}
+
+
+
 #endif
 
 IHardwareCursor* IHardwareCursor::Alloc(void* mem) {
@@ -211,8 +524,8 @@ IHardwareCursor* IHardwareCursor::Alloc(void* mem) {
 	if (SDL_GetWindowWMInfo(globalRendering->GetWindow(0), &info)) {
 		switch (info.subsystem)
 		{
-		case SDL_SYSWM_WAYLAND:
-			return (new (mem) HardwareCursorWayland());
+        case SDL_SYSWM_WAYLAND:
+            return (new (mem) HardwareCursorWayland());
 		case SDL_SYSWM_X11:
 			return (new (mem) HardwareCursorX11());
 		default: {
@@ -546,7 +859,7 @@ void HardwareCursorWindows::Bind()
 	#endif
 
 	SDL_ShowCursor(SDL_ENABLE);
-	SetCursor(cursor);
+    SetCursor(cursor);
 	mouseInput->SetWMMouseCursor(cursor);
 }
 
@@ -685,7 +998,7 @@ void HardwareCursorX11::Finish()
 
 	cursor = XcursorImagesLoadCursor(info.info.x11.display, cis);
 	XcursorImagesDestroy(cis);
-	cimages.clear();
+    cimages.clear();
 }
 
 void HardwareCursorX11::Bind()

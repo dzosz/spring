@@ -364,6 +364,10 @@ void CMouseCursor::Update()
 
 	animTime = math::fmod(animTime + globalRendering->lastFrameTime * 0.001f, animPeriod);
 
+    if (hwCursor && this->IsHWValid()) {
+        hwCursor->Update(animTime);
+    }
+
 	if (animTime < frames[currentFrame].startTime) {
 		currentFrame = 0;
 		return;

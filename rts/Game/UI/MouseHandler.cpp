@@ -779,10 +779,15 @@ void CMouseHandler::SetCursor(const std::string& cmdName, const bool forceRebind
 
 void CMouseHandler::UpdateCursors()
 {
-	// we update all cursors (for the command queue icons)
-	for (const auto& element: cursorFileMap) {
-		loadedCursors[element.second].Update();
-	}
+    // we update all cursors (for the command queue icons)
+    /*
+    for (const auto& element: cursorFileMap) {
+        loadedCursors[element.second].Update();
+    }*/
+
+    if (activeCursorIdx >= 0) {
+        loadedCursors[activeCursorIdx].Update();
+    }
 }
 
 

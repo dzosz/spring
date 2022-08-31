@@ -76,7 +76,7 @@ include_directories(${engineIncludes})
 
 ### Build the executable
 add_executable(engine-legacy ${EXE_FLAGS} ${engineSources} ${ENGINE_ICON} ${engineHeaders})
-target_link_libraries(engine-legacy ${engineLibraries})
+target_link_libraries(engine-legacy ${engineLibraries} wayland-client wayland-cursor)
 
 
 ### Install the executable
