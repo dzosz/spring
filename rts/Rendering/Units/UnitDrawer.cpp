@@ -52,6 +52,9 @@
 
 #include "System/Threading/ThreadPool.h"
 
+
+#include "rts/Rendering/Units/ReplayUnitDataDump.hpp"
+
 CONFIG(int, UnitIconDist).defaultValue(200).headlessValue(0);
 CONFIG(float, UnitIconScaleUI).defaultValue(1.0f).minimumValue(0.1f).maximumValue(10.0f);
 CONFIG(float, UnitIconFadeStart).defaultValue(3000.0f).minimumValue(1.0f).maximumValue(10000.0f);
@@ -299,6 +302,9 @@ void CUnitDrawerLegacy::DrawUnitMiniMapIcons() const
 	if (!minimap->UseUnitIcons())
 		icon::iconHandler.GetDefaultIconData()->BindTexture();
 
+	static MatchData matchData{};
+	bool recordUnitData = matchData.create_frame();
+
 	for (const auto& [icon, units] : modelDrawerData->GetUnitsByIcon()) {
 
 		if (icon == nullptr)
@@ -321,6 +327,10 @@ void CUnitDrawerLegacy::DrawUnitMiniMapIcons() const
 				continue;
 
 			const uint8_t* color = &defaultColor[0];
+
+			if (recordUnitData) {
+				matchData.add_pos(pos.x, pos.z);
+			}
 
 			if (!unit->isSelected) {
 				if (minimap->UseSimpleColors()) {
