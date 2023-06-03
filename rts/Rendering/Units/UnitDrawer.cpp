@@ -12,7 +12,6 @@
 #include "Game/UI/MiniMap.h"
 #include "Map/MapInfo.h"
 #include "Map/ReadMap.h"
-#include "Rendering/Env/IWater.h"
 #include "Rendering/GL/glExtra.h"
 #include "Rendering/GL/RenderBuffers.h"
 #include "Rendering/Shaders/ShaderHandler.h"
@@ -40,20 +39,21 @@
 #include "Sim/Units/Unit.h"
 #include "Sim/Units/UnitHandler.h"
 
+#include "ReplayUnitDataDump.hpp"
+#include "Net/Protocol/NetProtocol.h"
+#include "System/LoadSave/DemoRecorder.h"
+
 #include "System/EventHandler.h"
 #include "System/Config/ConfigHandler.h"
 //#include "System/FileSystem/FileHandler.h"
 
 #include "System/StringUtil.h"
 #include "System/MemPoolTypes.h"
-#include "System/SpringMath.h"
 #include "System/HashSpec.h"
 #include "System/SpringHash.h"
 
 #include "System/Threading/ThreadPool.h"
 
-
-#include "rts/Rendering/Units/ReplayUnitDataDump.hpp"
 
 CONFIG(int, UnitIconDist).defaultValue(200).headlessValue(0);
 CONFIG(float, UnitIconScaleUI).defaultValue(1.0f).minimumValue(0.1f).maximumValue(10.0f);
@@ -302,8 +302,8 @@ void CUnitDrawerLegacy::DrawUnitMiniMapIcons() const
 	if (!minimap->UseUnitIcons())
 		icon::iconHandler.GetDefaultIconData()->BindTexture();
 
-	static MatchData matchData{};
-	bool recordUnitData = matchData.create_frame();
+	static MatchData matchData(clientNet->GetDemoRecorder()->GetName());
+	bool recordUnitData = matchData.active_frame(gs->frameNum);
 
 	for (const auto& [icon, units] : modelDrawerData->GetUnitsByIcon()) {
 
@@ -329,7 +329,10 @@ void CUnitDrawerLegacy::DrawUnitMiniMapIcons() const
 			const uint8_t* color = &defaultColor[0];
 
 			if (recordUnitData) {
-				matchData.add_pos(pos.x, pos.z);
+				auto unit_type = 0;
+				auto unit_id = 0;
+				auto pos = unit->GetMapPos();
+				matchData.add_pos(unit_id, unit_type, unit->team, pos.x, pos.y);
 			}
 
 			if (!unit->isSelected) {
