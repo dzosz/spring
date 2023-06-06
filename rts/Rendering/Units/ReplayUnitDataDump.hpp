@@ -14,8 +14,8 @@
 #include <fstream>
 
 struct MatchFrame {
-	int id;
-	unsigned units;
+	int32_t  id;
+	uint32_t units;
 };
 
 struct __attribute__ ((packed)) UnitData {
@@ -29,8 +29,8 @@ struct __attribute__ ((packed)) UnitData {
 };
 
 struct MapData {
-	//uint16_t dim_x=0;
-	//uint16_t dim_y=0;
+	uint16_t dim_x=0;
+	uint16_t dim_y=0;
 	uint16_t minimap_x=0;
 	uint16_t minimap_y=0;
 	std::vector<uint8_t> data;
@@ -40,12 +40,16 @@ struct MatchDataWriter;
 
 struct MatchData {
 	const size_t framePerSec = GAME_SPEED;
-	size_t sampleFramePeriod = framePerSec * 5; // in seconds
+	size_t sampleFramePeriod = framePerSec * 1; // in seconds
 
 	std::vector<UnitData>   unit_data;
 	std::vector<MatchFrame> frames;
 	MapData mapdata;
 	std::string fileName;
+
+	~MatchData() {
+		write_data();
+	}
 
 	MatchData(std::string name) {
 		this->fileName = std::move(name);
@@ -57,16 +61,20 @@ struct MatchData {
 
 	void write_data() {
 		this->get_minimap_texture();
-		// LOG("XYZ write to %s", this->fileName.c_str());
+		LOG("XYZ write to %s", this->fileName.c_str());
 
 		std::ofstream f(fileName, std::ios::binary);
 		f << "Long Live Coil";
+
+		f.write((const char*) &mapdata.dim_x, sizeof(mapdata.dim_x));
+		f.write((const char*) &mapdata.dim_y, sizeof(mapdata.dim_y));
+
 		f.write((const char*) &mapdata.minimap_x, sizeof(mapdata.minimap_x));
 		f.write((const char*) &mapdata.minimap_y, sizeof(mapdata.minimap_y));
+
 		f.write((const char*) mapdata.data.data(), mapdata.data.size());
 
-		LOG("XYZ saved pixels: %u", mapdata.data.size());
-		return;
+		LOG("XYZ saved pixels: %lu", mapdata.data.size());
 
 		auto units_it = unit_data.begin();
 		for (auto& frame : this->frames) {
@@ -76,17 +84,21 @@ struct MatchData {
 			std::advance(units_it, frame.units);
 		}
 
-
+		LOG("XYZ saved units: %lu", unit_data.size());
 	}
 
 	bool active_frame(int current_frame) {
-		//LOG("XYZ active_frame %i %i", current_frame, sampleFramePeriod);
-		if (this->frames.size() > 2) {
-			write_data();
+		LOG("XYZ active_frame current=%i %i frames=%lu", current_frame, sampleFramePeriod, frames.size());
 
-			exit(1);
+		if (frames.size() && frames.back().id == current_frame) {
+			return false; // duplicate
 		}
-		if (current_frame % sampleFramePeriod == 0) {
+
+		if (this->frames.size() == 500) {
+			write_data();
+			//exit(1);
+		}
+		if (current_frame % sampleFramePeriod == 0) { 
 			this->frames.push_back({current_frame, 0});
 			return true;
 		}
@@ -106,18 +118,33 @@ struct MatchData {
 		auto& pixels = this->mapdata.data;
 		pixels.resize(tex_size.x * tex_size.y * 4);
 
+
 		/// READ THE CONTENT FROM THE FBO
-		glActiveTexture(GL_TEXTURE0);
+		//glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, tex);
 		//glBindFramebuffer(GL_FRAMEBUFFER, tex);
 		// glReadBuffer(tex);
 		//glReadPixels(0, 0, tex_size.x, tex_size.y, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
 		glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+
+		/*
+		for (int i =0; i < tex_size.x * tex_size.y; ++i) {
+			for (int j =0; j < 3; ++j) {
+				auto c = i * 4 +j;
+				auto p = i*3 + j;
+				pixels[p] = pixels[c];
+			}
+		}
+		pixels.resize(tex_size.x * tex_size.y * 3);
+		*/
 		//glGetTextureSubImage(GL_TEXTURE_2D, 0, 0, 0, 0,0 ,tex_size.x, tex_size.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
 		//glGetTextureImage(tex, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixels.size(), pixels.data());
 
 		this->mapdata.minimap_x = tex_size.x;
 		this->mapdata.minimap_y = tex_size.y;
+
+		this->mapdata.dim_x = mapDims.mapx;
+		this->mapdata.dim_y = mapDims.mapy;
 
 		LOG("XYZ	 %i x %i y %i", tex, tex_size.x, tex_size.y);
 

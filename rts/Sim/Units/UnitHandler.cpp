@@ -530,9 +530,18 @@ void CUnitHandler::SingleThreadPathRequests(std::vector<CUnit*>& unitsToMove)
 	}
 }
 
+
+#include "Rendering/Units/ReplayUnitDataDump.hpp"
+#include "Net/Protocol/NetProtocol.h"
+#include "System/LoadSave/DemoRecorder.h"
+
 void CUnitHandler::UpdateUnits()
 {
 	SCOPED_TIMER("Sim::Unit::Update");
+
+	static MatchData matchData(clientNet->GetDemoRecorder()->GetName());
+
+	bool recordUnitData = matchData.active_frame(gs->frameNum);
 
 	size_t activeUnitCount = activeUnits.size();
 	for (size_t i = 0; i < activeUnitCount; ++i) {
@@ -545,7 +554,17 @@ void CUnitHandler::UpdateUnits()
 		// unit->UpdateLocalModel();
 		unit->SanityCheck();
 
-		assert(activeUnits[i] == unit);
+		assert(activeUnits[i] == unit);		
+
+		//auto unit = this;
+
+		if (recordUnitData) {
+			auto unit_type = 0;
+			auto unit_id = 0;
+			auto pos = unit->GetMapPos();
+
+			matchData.add_pos(unit_id, unit_type, unit->team, pos.x, pos.y);
+		}
 	}
 }
 

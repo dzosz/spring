@@ -38,11 +38,6 @@
 #include "Sim/Units/UnitDefHandler.h"
 #include "Sim/Units/Unit.h"
 #include "Sim/Units/UnitHandler.h"
-
-#include "ReplayUnitDataDump.hpp"
-#include "Net/Protocol/NetProtocol.h"
-#include "System/LoadSave/DemoRecorder.h"
-
 #include "System/EventHandler.h"
 #include "System/Config/ConfigHandler.h"
 //#include "System/FileSystem/FileHandler.h"
@@ -302,9 +297,6 @@ void CUnitDrawerLegacy::DrawUnitMiniMapIcons() const
 	if (!minimap->UseUnitIcons())
 		icon::iconHandler.GetDefaultIconData()->BindTexture();
 
-	static MatchData matchData(clientNet->GetDemoRecorder()->GetName());
-	bool recordUnitData = matchData.active_frame(gs->frameNum);
-
 	for (const auto& [icon, units] : modelDrawerData->GetUnitsByIcon()) {
 
 		if (icon == nullptr)
@@ -327,13 +319,6 @@ void CUnitDrawerLegacy::DrawUnitMiniMapIcons() const
 				continue;
 
 			const uint8_t* color = &defaultColor[0];
-
-			if (recordUnitData) {
-				auto unit_type = 0;
-				auto unit_id = 0;
-				auto pos = unit->GetMapPos();
-				matchData.add_pos(unit_id, unit_type, unit->team, pos.x, pos.y);
-			}
 
 			if (!unit->isSelected) {
 				if (minimap->UseSimpleColors()) {
