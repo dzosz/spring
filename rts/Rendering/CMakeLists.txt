@@ -39,6 +39,7 @@ set(sources_engine_Rendering
 		"${CMAKE_CURRENT_SOURCE_DIR}/Env/Particles/Classes/GeoSquareProjectile.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Env/Particles/Classes/GeoThermSmokeProjectile.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Env/Particles/Classes/NanoProjectile.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Env/Particles/Classes/NewNanoProjectile.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Env/Particles/Classes/HeatCloudProjectile.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Env/Particles/Classes/MuzzleFlame.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Env/Particles/Classes/RepulseGfx.cpp"

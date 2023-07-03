@@ -32,6 +32,8 @@
 #include "System/TimeProfiler.h"
 #include "System/Threading/ThreadPool.h"
 
+#include "lib/entt/entt.hpp"
+#include "Rendering/Env/Particles/Classes/NewNanoProjectile.h"
 
 // reserve 5% of maxNanoParticles for important stuff such as capture and reclaim other teams' units
 #define NORMAL_NANO_PRIO 0.95f
@@ -41,6 +43,7 @@
 CONFIG(int, MaxParticles).defaultValue(10000).headlessValue(0).minimumValue(0);
 CONFIG(int, MaxNanoParticles).defaultValue(2000).headlessValue(0).minimumValue(0);
 
+static bool NEW_MODE = false;
 
 CR_BIND(CProjectileHandler, )
 CR_REG_METADATA(CProjectileHandler, (
@@ -57,13 +60,20 @@ CR_REG_METADATA(CProjectileHandler, (
 ))
 
 
-
 // note: stores all ExpGenSpawnable types, not just projectiles
 ProjMemPool projMemPool;
 
 CProjectileHandler projectileHandler;
 
+entt::registry registry;
 
+static void decrement_nano_use() {
+    projectileHandler.currentNanoParticles -= 1;
+}
+
+static void increment_nano_use() {
+    projectileHandler.currentNanoParticles += 1;
+}
 
 void CProjectileHandler::Init()
 {
@@ -92,6 +102,10 @@ void CProjectileHandler::Init()
 
 	// register ConfigNotify()
 	configHandler->NotifyOnChange(this, {"MaxParticles", "MaxNanoParticles"});
+    
+    registry.storage<NewNanoProjectile>().reserve(maxNanoParticles);
+    registry.on_construct<NewNanoProjectile>().connect<&increment_nano_use>();
+    registry.on_destroy<NewNanoProjectile>().connect<&decrement_nano_use>();
 }
 
 void CProjectileHandler::Kill()
@@ -125,6 +139,9 @@ void CProjectileHandler::Kill()
 			fpc.clear();
 		}
 	}
+    
+    // registry.clear<NewNanoProjectile>();
+    registry.clear();
 
 	CCollisionHandler::PrintStats();
 }
@@ -134,6 +151,10 @@ void CProjectileHandler::ConfigNotify(const std::string& key, const std::string&
 {
 	maxParticles     = configHandler->GetInt("MaxParticles");
 	maxNanoParticles = configHandler->GetInt("MaxNanoParticles");
+    
+    NEW_MODE = !NEW_MODE;
+    
+    LOG("ECS = %b", NEW_MODE);
 
 	projectiles[false].reserve(static_cast<size_t>(maxParticles) * 2);
 }
@@ -198,7 +219,9 @@ void CProjectileHandler::UpdateProjectilesImpl()
 		}
 	}
 	else {
-		for_mt_chunk(0, pc.size(), [&pc](int i) {
+        // for(int i =0; i < pc.size() ; ++i)
+		for_mt_chunk(0, pc.size(), [&pc](int i)        
+        {
 			CProjectile* p = pc[i];
 			assert(p != nullptr);
 
@@ -206,6 +229,21 @@ void CProjectileHandler::UpdateProjectilesImpl()
 			p->Update();
 			MAPPOS_SANITY_CHECK(p->pos);
 		});
+        
+        auto view = registry.view<NewNanoProjectile>();
+        
+        for (auto& ent : view) {
+            auto& nano = view.get<NewNanoProjectile>(ent);
+            // TODO delete before new are inserted so holes can be filled before they're processed?
+            if (nano.deleteMe) {
+                registry.destroy(ent);
+                continue;
+            }
+            
+            MAPPOS_SANITY_CHECK(nano.pos);
+            nano.Update();
+            MAPPOS_SANITY_CHECK(nano.pos);            
+        }
 	}
 }
 
@@ -664,7 +702,12 @@ void CProjectileHandler::AddNanoParticle(
 		{tColor[0], tColor[1], tColor[2],  tAlpha},
 	};
 
-	projMemPool.alloc<CNanoProjectile>(startPos, dif, int(l), colors[globalRendering->teamNanospray]);
+    if (NEW_MODE) {
+        auto entity = registry.create();
+        registry.emplace<NewNanoProjectile>(entity, startPos, dif, int(l), colors[globalRendering->teamNanospray]);
+    } else
+        projMemPool.alloc<CNanoProjectile>(startPos, dif, int(l), colors[globalRendering->teamNanospray]);
+    
 }
 
 void CProjectileHandler::AddNanoParticle(
@@ -700,12 +743,23 @@ void CProjectileHandler::AddNanoParticle(
 		{udColor.r, udColor.g, udColor.b, udAlpha},
 		{tColor[0], tColor[1], tColor[2],  tAlpha},
 	};
+    
+    if (NEW_MODE) {
+        auto entity = registry.create();
+        if (!inverse) {
+            registry.emplace<NewNanoProjectile>(entity, startPos, dif * 3.0f, int(len / 3.0f), colors[globalRendering->teamNanospray]);
+        } else {
+            registry.emplace<NewNanoProjectile>(entity, startPos + dif * len, -dif * 3.0f, int(len / 3.0f), colors[globalRendering->teamNanospray]);
+        }
+    } else {
+        if (!inverse) {
+            projMemPool.alloc<CNanoProjectile>(startPos, dif * 3.0f, int(len / 3.0f), colors[globalRendering->teamNanospray]);
+        } else {
+           projMemPool.alloc<CNanoProjectile>(startPos + dif * len, -dif * 3.0f, int(len / 3.0f), colors[globalRendering->teamNanospray]);
+        }
+    }
 
-	if (!inverse) {
-		projMemPool.alloc<CNanoProjectile>(startPos, dif * 3.0f, int(len / 3.0f), colors[globalRendering->teamNanospray]);
-	} else {
-		projMemPool.alloc<CNanoProjectile>(startPos + dif * len, -dif * 3.0f, int(len / 3.0f), colors[globalRendering->teamNanospray]);
-	}
+	
 }
 
 float CProjectileHandler::GetParticleSaturation(bool randomized) const
@@ -743,6 +797,7 @@ int CProjectileHandler::GetCurrentParticles() const
 		}
 	}
 	partCount += groundFlashes.size();
+    partCount += registry.alive();
 	return partCount;
 }
 
