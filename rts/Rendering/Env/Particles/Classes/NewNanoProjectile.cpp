@@ -13,20 +13,19 @@
 
 
 NewNanoProjectile::NewNanoProjectile(float3 pos, float3 speed, int lifeTime, SColor c)
-	//: CProjectile(pos, speed, nullptr, false, false, false)
-	: deathFrame(gs->frameNum + lifeTime)
-	, color(c),
+	: color(c),
       pos(pos),
       speed(speed),
-      createFrame(gs->frameNum)
+      createFrame(gs->frameNum),
+      deathFrame(gs->frameNum + lifeTime)
 {
-	rotVal0x = rotValRng0 * (guRNG.NextFloat() * 2.0 - 1.0);
-	rotVel0x = rotVelRng0 * (guRNG.NextFloat() * 2.0 - 1.0);
-	rotAcc0x = rotAccRng0 * (guRNG.NextFloat() * 2.0 - 1.0);
+	auto rotVal0x = CNanoProjectile::rotValRng0 * (guRNG.NextFloat() * 2.0 - 1.0);
+	auto rotVel0x = CNanoProjectile::rotVelRng0 * (guRNG.NextFloat() * 2.0 - 1.0);
+	auto rotAcc0x = CNanoProjectile::rotAccRng0 * (guRNG.NextFloat() * 2.0 - 1.0);
 
-	rotVal = rotVal0 + rotVal0x;
-	rotVel = rotVel0 + rotVel0x;
-	rotAcc = rotAcc0 + rotAcc0x;
+	rotVal = CNanoProjectile::rotVal0 + rotVal0x;
+	rotVel = CNanoProjectile::rotVel0 + rotVel0x;
+	rotAcc = CNanoProjectile::rotAcc0 + rotAcc0x;
 }
 
 void NewNanoProjectile::Update()
@@ -42,11 +41,11 @@ void NewNanoProjectile::Draw()
 		// rotParams.y is acceleration in angle per frame^2
 		rotVel = CNanoProjectile::rotVel0 + rotAcc * t;
 		rotVal = CNanoProjectile::rotVal0 + rotVel * t;
+        
 	}
 
-    auto cam = camera;
-	const float3 ri = cam->GetRight() * drawRadius;
-	const float3 up = cam->GetUp() * drawRadius;
+	const float3 ri = camera->GetRight() * drawRadius;
+	const float3 up = camera->GetUp() * drawRadius;
 	std::array<float3, 4> bounds = {
 		-ri - up,
 		 ri - up,
@@ -56,7 +55,7 @@ void NewNanoProjectile::Draw()
 
 	if (math::fabs(rotVal) > 0.01f) {
 		for (auto& b : bounds)
-			b = b.rotate(rotVal, cam->GetForward());
+			b = b.rotate(rotVal, camera->GetForward());
 	}
 
 	const auto* gfxt = projectileDrawer->gfxtex;
@@ -70,14 +69,11 @@ void NewNanoProjectile::Draw()
 
 void NewNanoProjectile::DrawOnMinimap() const
 {
-	// TODO
     AddMiniMapVertices({ pos        , color4::green }, { pos + speed, color4::green });
 }
 
 void NewNanoProjectile::AddMiniMapVertices(VA_TYPE_C&& v1, VA_TYPE_C&& v2) const
-{
-    
-    
+{  
 	if (v1.pos.equals(v2.pos)) {
         auto& mmPtsRB = CProjectile::GetMiniMapPointsRB();
 		mmPtsRB.AddVertex(std::move(v1));
@@ -120,29 +116,3 @@ void NewNanoProjectile::AddEffectsQuad(const VA_TYPE_TC& tl, const VA_TYPE_TC& t
 		{ bl.pos, float3{ bl.s, bl.t, layer }, uvInfo, animInfo, bl.c }
 	);
 }
-
-/*
-void CExpGenSpawnable::UpdateAnimParams()
-{
-	if (static_cast<int>(animParams.x) <= 1 && static_cast<int>(animParams.y) <= 1) {
-		animProgress = 0.0f;
-		return;
-	}
-
-	const float t = (gs->frameNum - createFrame + globalRendering->timeOffset);
-	const float animSpeed = math::fabs(animParams.z);
-	if (animParams.z < 0.0f) {
-		#if 0
-			animProgress = math::fmod(t, 2.0f * animSpeed) / animSpeed;
-			if (animProgress > 1.0)
-				animProgress = 2.0f - animProgress;
-		#else
-			animProgress = 1.0f - math::fabs(math::fmod(t, 2.0f * animSpeed) / animSpeed - 1.0f);
-		#endif
-	}
-	else {
-		animProgress = math::fmod(t, animSpeed) / animSpeed;
-	}
-}
-*/
-

@@ -609,7 +609,7 @@ static bool CanDrawNewProjectile(const NewNanoProjectile* pro, int allyTeam)
 {
 	auto& th = teamHandler;
 	auto& lh = losHandler;
-	return (gu->spectatingFullView || (th.IsValidAllyTeam(allyTeam) && th.Ally(allyTeam, gu->myAllyTeam)) || lh->InLos(pro->drawPos, gu->myAllyTeam)); // TODO  || lh->InLos(pro, gu->myAllyTeam));
+	return (gu->spectatingFullView || (th.IsValidAllyTeam(allyTeam) && th.Ally(allyTeam, gu->myAllyTeam)) || lh->InLos(pro->drawPos, gu->myAllyTeam));
 }
 
 void CProjectileDrawer::DrawProjectileNow(CProjectile* pro, bool drawReflection, bool drawRefraction)
@@ -714,12 +714,10 @@ void CProjectileDrawer::DrawProjectilesMiniMap()
 	}
     
     auto view = registry.view<NewNanoProjectile>();  
-    size_t drawed = 0;
     for (auto& ent : view) {
         auto& nano = view.get<NewNanoProjectile>(ent);
         if (!CanDrawNewProjectile(&nano, nano.GetAllyteamID()))
-            continue;
-        
+            continue;        
         nano.DrawOnMinimap();
     }
 
@@ -826,9 +824,8 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
                 if (!CanDrawNewProjectile(pro, pro->GetAllyteamID()))
                    continue;
             
-                if (drawRefraction && (pro->drawPos.y > pro->GetDrawRadius()) /*!pro->IsInWater()*/)
-                    continue;
-            
+                if (drawRefraction && (pro->drawPos.y > pro->GetDrawRadius()))
+                    continue;            
                 
                 if (!cam->InView(pro->drawPos, pro->GetDrawRadius()))
                     continue;

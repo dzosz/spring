@@ -219,7 +219,6 @@ void CProjectileHandler::UpdateProjectilesImpl()
 		}
 	}
 	else {
-        // for(int i =0; i < pc.size() ; ++i)
 		for_mt_chunk(0, pc.size(), [&pc](int i)        
         {
 			CProjectile* p = pc[i];
@@ -234,7 +233,6 @@ void CProjectileHandler::UpdateProjectilesImpl()
         
         for (auto& ent : view) {
             auto& nano = view.get<NewNanoProjectile>(ent);
-            // TODO delete before new are inserted so holes can be filled before they're processed?
             if (nano.deleteMe) {
                 registry.destroy(ent);
                 continue;
@@ -758,7 +756,6 @@ void CProjectileHandler::AddNanoParticle(
            projMemPool.alloc<CNanoProjectile>(startPos + dif * len, -dif * 3.0f, int(len / 3.0f), colors[globalRendering->teamNanospray]);
         }
     }
-
 	
 }
 

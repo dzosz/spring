@@ -17,35 +17,24 @@ public:
 	void DrawOnMinimap() const;
     float3 GetDrawPos(float t) const { return (speed.w != 0.0f) ? (pos + speed * t) : pos; }
     float GetDrawRadius() const { return drawRadius; }
-    int GetAllyteamID() const { return allyteamID; }
+    int GetAllyteamID() const { return allyteamID; }    
+    void AddEffectsQuad(const VA_TYPE_TC& tl, const VA_TYPE_TC& tr, const VA_TYPE_TC& br, const VA_TYPE_TC& bl) const;
+    TypedRenderBuffer<VA_TYPE_PROJ>& GetPrimaryRenderBuffer() const;
 
 private:
     void AddMiniMapVertices(VA_TYPE_C&& v1, VA_TYPE_C&& v2) const;
-	float rotAcc = 0.0f;
-
-	float rotVal0x = 0.0f;
-	float rotVel0x = 0.0f;
-	float rotAcc0x = 0.0f;
-public:
-  
-	const static inline float rotVal0 = 0.0f;
-	const static inline float rotVel0 = 0.0f;
-	const static inline float rotAcc0 = 0.0f;
-	const static inline float rotValRng0 = 0.0f;
-	const static inline float rotVelRng0 = 0.0f;
-	const static inline float rotAccRng0 = 0.0f;
-   
 	
-    
 	static const int drawRadius = 3;
     
     float rotVal = 0.0f;
     float rotVel = 0.0f;
+    float rotAcc = 0.0f;
+public:    
     float3 drawPos;
     const SColor color;   
     
     float3 pos;
-    float4 speed;
+    const float4 speed;
     bool deleteMe=false;
     
     const int createFrame;   
@@ -54,11 +43,6 @@ public:
     float animProgress = 0.0f;
     float3 animParams = { 1.0f, 1.0f, 30.0f }; // numX, numY, animLength, 
     const int allyteamID = -1;
-    
-    
-// funcs from base
-    void AddEffectsQuad(const VA_TYPE_TC& tl, const VA_TYPE_TC& tr, const VA_TYPE_TC& br, const VA_TYPE_TC& bl) const;
-    TypedRenderBuffer<VA_TYPE_PROJ>& GetPrimaryRenderBuffer() const;
 };
 
 #endif /* NEW_NANO_PROJECTILE_H */
