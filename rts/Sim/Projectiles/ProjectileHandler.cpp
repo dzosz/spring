@@ -41,7 +41,7 @@
 
 
 CONFIG(int, MaxParticles).defaultValue(10000).headlessValue(0).minimumValue(0);
-CONFIG(int, MaxNanoParticles).defaultValue(2000).headlessValue(0).minimumValue(0);
+CONFIG(int, MaxNanoParticles).defaultValue(10000).headlessValue(0).minimumValue(0);
 
 static bool NEW_MODE = false;
 
@@ -154,7 +154,7 @@ void CProjectileHandler::ConfigNotify(const std::string& key, const std::string&
     
     NEW_MODE = !NEW_MODE;
     
-    LOG("ECS = %b", NEW_MODE);
+    LOG("ECS = %b alive = %ld", NEW_MODE, registry.alive());
 
 	projectiles[false].reserve(static_cast<size_t>(maxParticles) * 2);
 }
