@@ -598,6 +598,14 @@ void CProjectileDrawer::DrawProjectilesSet(const std::vector<CProjectile*>& proj
 	}
 }
 
+template <typename TProj>
+static bool CanDrawNanoProjectile(const TProj* pro, int allyTeam)
+{
+	auto& th = teamHandler;
+	auto& lh = losHandler;
+	return (gu->spectatingFullView || (th.IsValidAllyTeam(allyTeam) && th.Ally(allyTeam, gu->myAllyTeam)) || lh->InLos(pro->drawPos, gu->myAllyTeam));
+}
+
 bool CProjectileDrawer::CanDrawProjectile(const CProjectile* pro, int allyTeam)
 {
 	auto& th = teamHandler;
@@ -605,12 +613,7 @@ bool CProjectileDrawer::CanDrawProjectile(const CProjectile* pro, int allyTeam)
 	return (gu->spectatingFullView || (th.IsValidAllyTeam(allyTeam) && th.Ally(allyTeam, gu->myAllyTeam)) || lh->InLos(pro, gu->myAllyTeam));
 }
 
-static bool CanDrawNewProjectile(const NewNanoProjectile* pro, int allyTeam)
-{
-	auto& th = teamHandler;
-	auto& lh = losHandler;
-	return (gu->spectatingFullView || (th.IsValidAllyTeam(allyTeam) && th.Ally(allyTeam, gu->myAllyTeam)) || lh->InLos(pro->drawPos, gu->myAllyTeam));
-}
+
 
 void CProjectileDrawer::DrawProjectileNow(CProjectile* pro, bool drawReflection, bool drawRefraction)
 {
@@ -713,13 +716,14 @@ void CProjectileDrawer::DrawProjectilesMiniMap()
 		}
 	}
     
-    auto view = registry.view<NewNanoProjectile>();  
-    for (auto& ent : view) {
-        auto& nano = view.get<NewNanoProjectile>(ent);
-        if (!CanDrawNewProjectile(&nano, nano.GetAllyteamID()))
-            continue;        
-        nano.DrawOnMinimap();
-    }
+
+	auto view = registry.view<NewNanoProjectile>();  
+	for (auto& ent : view) {	
+		auto& nano = view.get<NewNanoProjectile>(ent);
+		if (!CanDrawNanoProjectile(&nano, nano.GetAllyteamID()))
+			continue;        
+		nano.DrawOnMinimap();
+	}
 
 	auto& sh = TypedRenderBuffer<VA_TYPE_C>::GetShader();
 
@@ -813,26 +817,29 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 		}
         
         
+		{
+		SCOPED_TIMER("Nano::Draw");
         const CCamera* cam = CCameraHandler::GetActiveCamera();
+		const auto offset = globalRendering->timeOffset;
         auto view = registry.view<NewNanoProjectile>();  
         for (auto& ent : view) {
             auto& nano = view.get<NewNanoProjectile>(ent);
             auto pro = &nano;
-            {
-                pro->drawPos = pro->GetDrawPos(globalRendering->timeOffset);
-            
-                if (!CanDrawNewProjectile(pro, pro->GetAllyteamID()))
+			pro->drawPos = pro->GetDrawPos(globalRendering->timeOffset);
+            {              
+				if (!CanDrawNanoProjectile(pro, pro->GetAllyteamID()))
                    continue;
             
-                if (drawRefraction && (pro->drawPos.y > pro->GetDrawRadius()))
+				if (drawRefraction && (pro->drawPos.y > pro->GetDrawRadius()))
                     continue;            
                 
                 if (!cam->InView(pro->drawPos, pro->GetDrawRadius()))
                     continue;
-            }
+			}
             
             nano.Draw();
-        }
+		}
+		}
 	}
 
 	glEnable(GL_BLEND);

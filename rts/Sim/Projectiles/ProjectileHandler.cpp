@@ -228,20 +228,21 @@ void CProjectileHandler::UpdateProjectilesImpl()
 			p->Update();
 			MAPPOS_SANITY_CHECK(p->pos);
 		});
-        
-        auto view = registry.view<NewNanoProjectile>();
-        
-        for (auto& ent : view) {
-            auto& nano = view.get<NewNanoProjectile>(ent);
-            if (nano.deleteMe) {
-                registry.destroy(ent);
-                continue;
-            }
-            
-            MAPPOS_SANITY_CHECK(nano.pos);
-            nano.Update();
-            MAPPOS_SANITY_CHECK(nano.pos);            
-        }
+
+		{
+		SCOPED_TIMER("Nano::Sim");
+		auto view = registry.view<NewNanoProjectile>();
+		for (auto& ent : view) {
+			auto& nano = view.get<NewNanoProjectile>(ent);
+			if (nano.deleteMe) {
+				registry.destroy(ent);
+				continue;
+			}
+			MAPPOS_SANITY_CHECK(nano.pos);
+			nano.Update();
+			MAPPOS_SANITY_CHECK(nano.pos);
+		}
+		}
 	}
 }
 
