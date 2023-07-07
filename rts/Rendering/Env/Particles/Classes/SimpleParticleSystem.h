@@ -9,9 +9,11 @@
 
 class CUnit;
 class CColorMap;
+class NewSimpleParticleSystem;
 
 class CSimpleParticleSystem : public CProjectile
 {
+	friend NewSimpleParticleSystem;
 	CR_DECLARE_DERIVED(CSimpleParticleSystem)
 	CR_DECLARE_SUB(Particle)
 

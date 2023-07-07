@@ -11,6 +11,7 @@
 #include "System/float3.h"
 #include "System/FreeListMap.h"
 
+class CSimpleParticleSystem;
 
 // bypass id and event handling for unsynced projectiles (faster)
 #define PH_UNSYNCED_PROJECTILE_EVENTS 0
@@ -66,6 +67,7 @@ public:
 	int GetCurrentParticles() const;
 
 	void AddProjectile(CProjectile* p);
+	void AddSimpleParticleSystem(CSimpleParticleSystem* , CUnit* owner, const float3& pos);
 	void AddGroundFlash(CGroundFlash* flash) { groundFlashes.push_back(flash); }
 	void AddFlyingPiece(
 		int modelType,

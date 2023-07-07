@@ -54,6 +54,7 @@ CProjectileDrawer* projectileDrawer = nullptr;
 
 #include "lib/entt/entt.hpp"
 #include "Rendering/Env/Particles/Classes/NewNanoProjectile.h"
+#include "Rendering/Env/Particles/Classes/NewSimpleParticleSystem.h"
 extern entt::registry registry; // nanos
 
 // can not be a CProjectileDrawer; destruction in global
@@ -603,7 +604,7 @@ static bool CanDrawNanoProjectile(const TProj* pro, int allyTeam)
 {
 	auto& th = teamHandler;
 	auto& lh = losHandler;
-	return (gu->spectatingFullView || (th.IsValidAllyTeam(allyTeam) && th.Ally(allyTeam, gu->myAllyTeam)) || lh->InLos(pro->drawPos, gu->myAllyTeam));
+	return (gu->spectatingFullView || (th.IsValidAllyTeam(allyTeam) && th.Ally(allyTeam, gu->myAllyTeam)) || lh->InLos(pro->drawPos, gu->myAllyTeam)); // TODO some particles use AirLos
 }
 
 bool CProjectileDrawer::CanDrawProjectile(const CProjectile* pro, int allyTeam)
@@ -717,13 +718,17 @@ void CProjectileDrawer::DrawProjectilesMiniMap()
 	}
     
 
-	auto view = registry.view<NewNanoProjectile>();  
-	for (auto& ent : view) {	
-		auto& nano = view.get<NewNanoProjectile>(ent);
+	registry.view<NewNanoProjectile>().each([&](auto ent, auto& nano) {	
 		if (!CanDrawNanoProjectile(&nano, nano.GetAllyteamID()))
-			continue;        
+			return;        
 		nano.DrawOnMinimap();
-	}
+	});
+	
+	registry.view<NewSimpleParticleSystem>().each([&](auto ent, auto& proj) {	
+		if (!CanDrawNanoProjectile(&proj, proj.GetAllyteamID())) // TODO not using airlos
+			return;        
+		proj.DrawOnMinimap();
+	});
 
 	auto& sh = TypedRenderBuffer<VA_TYPE_C>::GetShader();
 
@@ -819,25 +824,41 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
         
 		{
 		SCOPED_TIMER("Nano::Draw");
-        const CCamera* cam = CCameraHandler::GetActiveCamera();
+		const CCamera* cam = CCameraHandler::GetActiveCamera();
 		const auto offset = globalRendering->timeOffset;
-        auto view = registry.view<NewNanoProjectile>();  
-        for (auto& ent : view) {
-            auto& nano = view.get<NewNanoProjectile>(ent);
-            auto pro = &nano;
+		auto view = registry.view<NewNanoProjectile>();  
+		for (auto& ent : view) {
+			auto& nano = view.get<NewNanoProjectile>(ent);
+			auto pro = &nano;
 			pro->drawPos = pro->GetDrawPos(globalRendering->timeOffset);
-            {              
-				if (!CanDrawNanoProjectile(pro, pro->GetAllyteamID()))
-                   continue;
-            
-				if (drawRefraction && (pro->drawPos.y > pro->GetDrawRadius()))
-                    continue;            
-                
-                if (!cam->InView(pro->drawPos, pro->GetDrawRadius()))
-                    continue;
-			}
-            
-            nano.Draw();
+			if (!CanDrawNanoProjectile(pro, pro->GetAllyteamID()))
+			   continue;
+
+			if (drawRefraction && (pro->drawPos.y > pro->GetDrawRadius()))
+				continue;
+
+			if (!cam->InView(pro->drawPos, pro->GetDrawRadius()))
+				continue;
+			nano.Draw();
+		}
+		}
+		{
+		SCOPED_TIMER("NewSimpleParticleSystem::Draw");
+		const CCamera* cam = CCameraHandler::GetActiveCamera();
+		const auto offset = globalRendering->timeOffset;
+		auto view = registry.view<NewSimpleParticleSystem, NewSimpleParticle>();  
+		for (auto& ent : view) {
+			auto& system = view.get<NewSimpleParticleSystem>(ent);
+			auto& particle = view.get<NewSimpleParticle>(ent);
+			auto pro = &system;
+			pro->drawPos = pro->GetDrawPos(globalRendering->timeOffset);
+			if (!CanDrawNanoProjectile(pro, pro->GetAllyteamID()))
+				continue;
+			if (drawRefraction && (pro->drawPos.y > pro->GetDrawRadius()))
+				continue;
+			if (!cam->InView(pro->drawPos, pro->GetDrawRadius()))
+				continue;
+			system.DrawParticle(&particle);
 		}
 		}
 	}

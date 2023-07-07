@@ -51,7 +51,7 @@ CExpGenSpawnable::CExpGenSpawnable()
 	, rotVal{ 0 }
 	, rotVel{ 0 }
 {
-	assert(projMemPool.alloced(this));
+	//assert(projMemPool.alloced(this)); // TODO NewSimpleParticleSystem allocates 1 instance on stack
 }
 
 CExpGenSpawnable::~CExpGenSpawnable()

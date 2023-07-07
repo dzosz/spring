@@ -34,6 +34,8 @@
 
 #include "lib/entt/entt.hpp"
 #include "Rendering/Env/Particles/Classes/NewNanoProjectile.h"
+#include "Rendering/Env/Particles/Classes/SimpleParticleSystem.h"
+#include "Rendering/Env/Particles/Classes/NewSimpleParticleSystem.h"
 
 // reserve 5% of maxNanoParticles for important stuff such as capture and reclaim other teams' units
 #define NORMAL_NANO_PRIO 0.95f
@@ -43,7 +45,7 @@
 CONFIG(int, MaxParticles).defaultValue(10000).headlessValue(0).minimumValue(0);
 CONFIG(int, MaxNanoParticles).defaultValue(10000).headlessValue(0).minimumValue(0);
 
-static bool NEW_MODE = false;
+bool NEW_MODE = false;
 
 CR_BIND(CProjectileHandler, )
 CR_REG_METADATA(CProjectileHandler, (
@@ -73,6 +75,18 @@ static void decrement_nano_use() {
 
 static void increment_nano_use() {
     projectileHandler.currentNanoParticles += 1;
+}
+
+void CProjectileHandler::AddSimpleParticleSystem(CSimpleParticleSystem* proj, CUnit* owner, const float3& pos) {
+	for (int i=0; i< proj->GetProjectilesCount(); ++i)
+	{
+		auto entity = registry.create();
+		auto& system = registry.emplace<NewSimpleParticleSystem>(entity);
+		auto& p = registry.emplace<NewSimpleParticle>(entity);
+		system.from(*proj);
+		system.Init(owner, pos);
+		system.InitParticle(p, pos);
+	}
 }
 
 void CProjectileHandler::Init()
@@ -154,7 +168,7 @@ void CProjectileHandler::ConfigNotify(const std::string& key, const std::string&
     
     NEW_MODE = !NEW_MODE;
     
-    LOG("ECS = %b alive = %ld", NEW_MODE, registry.alive());
+    LOG("ECS MODE = %b ECS particles %ld destroyed", NEW_MODE, registry.alive());
 
 	projectiles[false].reserve(static_cast<size_t>(maxParticles) * 2);
 }
@@ -219,6 +233,24 @@ void CProjectileHandler::UpdateProjectilesImpl()
 		}
 	}
 	else {
+		auto SPS = [&]() {
+			SCOPED_TIMER("Sim::Projectiles::NSP");
+			registry.view<DeletedEntity>().each([](auto entity) { 
+				registry.destroy(entity);
+			});
+			auto view = registry.view<NewSimpleParticleSystem, NewSimpleParticle>();
+			for (auto& ent : view) {
+				auto& system = view.get<NewSimpleParticleSystem>(ent);
+				auto& p = view.get<NewSimpleParticle>(ent);
+				if (!system.Update(p)) {
+					registry.emplace<DeletedEntity>(ent);
+				}
+			}
+		};
+		
+		// TODO run on thread pool?
+		auto ecs_process_future = std::async(std::launch::async, std::move(SPS));
+		
 		for_mt_chunk(0, pc.size(), [&pc](int i)        
         {
 			CProjectile* p = pc[i];
@@ -230,7 +262,7 @@ void CProjectileHandler::UpdateProjectilesImpl()
 		});
 
 		{
-		SCOPED_TIMER("Nano::Sim");
+		SCOPED_TIMER("Sim::Projectiles::Nano");
 		auto view = registry.view<NewNanoProjectile>();
 		for (auto& ent : view) {
 			auto& nano = view.get<NewNanoProjectile>(ent);
@@ -243,6 +275,7 @@ void CProjectileHandler::UpdateProjectilesImpl()
 			MAPPOS_SANITY_CHECK(nano.pos);
 		}
 		}
+		ecs_process_future.get();
 	}
 }
 
