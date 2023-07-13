@@ -50,6 +50,7 @@ static constexpr size_t CEG_PREFIX_STRLEN = sizeof(CEG_PREFIX_STRING) - 1;
 CExplosionGeneratorHandler explGenHandler;
 
 
+extern bool ECS_MODE; // runtime switch for new ECS mode
 
 unsigned int CCustomExplosionGenerator::GetFlagsFromTable(const LuaTable& table)
 {
@@ -969,6 +970,7 @@ bool CCustomExplosionGenerator::Explosion(
 	else {
 		assert(Threading::IsMainThread() || Threading::IsGameLoadThread());
 	}
+	static const int SimpleParticleID = CExpGenSpawnable::GetSpawnableID("CSimpleParticleSystem");
 
 	for (int a = 0; a < spawnInfo.size(); a++) {
 		const ProjectileSpawnInfo& psi = spawnInfo[a];
@@ -982,6 +984,13 @@ bool CCustomExplosionGenerator::Explosion(
 			break;
 
 		for (unsigned int c = 0; c < psi.count; c++) {
+			if (ECS_MODE && psi.spawnableID == SimpleParticleID) {
+				// TODO temporary solution to avoid adding original instance projectile to "projectHandler"
+				CSimpleParticleSystem projectile;
+				ExecuteExplosionCode(&psi.code[0], damage, (char*) &projectile, c, dir);
+				projectileHandler.AddSimpleParticleSystem(&projectile, owner, pos);
+				continue;
+			}
 			CExpGenSpawnable* projectile = CExpGenSpawnable::CreateSpawnable(psi.spawnableID);
 			ExecuteExplosionCode(&psi.code[0], damage, (char*) projectile, c, dir);
 			projectile->Init(owner, pos);

@@ -32,6 +32,11 @@
 #include "System/TimeProfiler.h"
 #include "System/Threading/ThreadPool.h"
 
+#include "lib/entt/entt.hpp"
+#include "Rendering/Env/Particles/ECS.h"
+#include "Rendering/Env/Particles/Classes/NewNanoProjectile.h"
+#include "Rendering/Env/Particles/Classes/SimpleParticleSystem.h"
+#include "Rendering/Env/Particles/Classes/NewSimpleParticleSystem.h"
 
 // reserve 5% of maxNanoParticles for important stuff such as capture and reclaim other teams' units
 #define NORMAL_NANO_PRIO 0.95f
@@ -41,6 +46,7 @@
 CONFIG(int, MaxParticles).defaultValue(10000).headlessValue(0).minimumValue(0);
 CONFIG(int, MaxNanoParticles).defaultValue(2000).headlessValue(0).minimumValue(0);
 
+bool ECS_MODE = false;
 
 CR_BIND(CProjectileHandler, )
 CR_REG_METADATA(CProjectileHandler, (
@@ -63,7 +69,91 @@ ProjMemPool projMemPool;
 
 CProjectileHandler projectileHandler;
 
+entt::registry registry;
 
+static void updateECSParticles() {
+	// TODO for some reason this approach turned out to be slower even when the game is overwhelmed
+	// with SimpleParticleSystem
+	// Executing each System on separate thread did not bring any benefit
+	SCOPED_TIMER("Sim::Projectiles::ECS");
+	// const float t = (gs->frameNum - createFrame + globalRendering->timeOffset);
+
+	/*
+	registry.view<DeletedEntity>().each([](auto entity) { 
+	registry.destroy(entity);
+	});
+	*/
+
+	registry.group<Lifetime, Decayrate>().each([&](auto entity, auto& lifetime, auto& decayrate) { 
+			if (!LifetimeSystem(lifetime, decayrate)) {
+			//registry.emplace<DeletedEntity>(entity);
+			registry.destroy(entity);
+			}
+			});
+
+	const float t = (gs->frameNum - globalRendering->timeOffset);
+	//auto t = globalRendering->timeOffset;
+
+	registry.group<AnimProgress, AnimParams>().each([&](auto entity, auto& animProgress, auto& animParams) { 
+			AnimationSystem(animProgress, animParams, t);
+			});
+
+	registry.group<Position, Speed, ParticlePhys>().each([&](auto entity, auto& pos, auto& speed, auto& phys) { 
+			PositionSystem(pos, speed, phys);
+			});
+
+	registry.group<Rotation, RotParams>().each([&](auto entity, auto& rot, auto& rotparams) { 
+			RotationSystem(rot, rotparams, t);
+			});
+
+	/*
+	auto view = registry.group<NewSimpleParticleSystem, NewSimpleParticle>();
+	for (auto& ent : view) {
+		auto& system = view.get<NewSimpleParticleSystem>(ent);
+		auto& p = view.get<NewSimpleParticle>(ent);
+		if (!system.Update(p))
+			registry.emplace<DeletedEntity>(ent);
+	}
+	*/
+}
+
+void CProjectileHandler::AddSimpleParticleSystem(CSimpleParticleSystem* proj, CUnit* owner, const float3& pos) {
+	proj->weapon = 1; // workaround to make the projectile not add to Projectiles
+	proj->Init(owner, pos);
+
+	const float3 up = proj->emitVector;
+	const float3 right = up.cross(float3(up.y, up.z, -up.x));
+	const float3 forward = up.cross(right);
+
+	for (int i=0; i< proj->GetProjectilesCount(); ++i)
+	{		
+		float az = guRNG.NextFloat() * math::TWOPI;
+		float ay = (proj->emitRot + (proj->emitRotSpread * guRNG.NextFloat())) * math::DEG_TO_RAD;
+
+		float4 speed = ((up * proj->emitMul.y) * fastmath::cos(ay) - ((right * proj->emitMul.x) * fastmath::cos(az) - (forward * proj->emitMul.z) * fastmath::sin(az)) * fastmath::sin(ay)) * (proj->particleSpeed + (guRNG.NextFloat() * proj->particleSpeedSpread));
+		auto rotVal = proj->rotParams.z; //initial rotation value
+		auto rotVel = proj->rotParams.x; //initial rotation velocity
+		float decayrate = 1.0f / (proj->particleLife + (guRNG.NextFloat() * proj->particleLifeSpread));
+		float size = proj->particleSize + guRNG.NextFloat()*proj->particleSizeSpread;
+
+		auto ent = registry.create();
+		registry.emplace<Position>(ent, pos);
+		registry.emplace<Speed>(ent, speed);
+		registry.emplace<Rotation>(ent, rotVal, rotVel);
+		registry.emplace<RotParams>(ent, proj->rotParams);
+		registry.emplace<Lifetime>(ent, 0.0f);
+		registry.emplace<Decayrate>(ent, decayrate);
+		registry.emplace<Sized>(ent, size);
+		registry.emplace<SizeChange>(ent, proj->sizeMod, proj->sizeGrowth);
+		registry.emplace<AnimProgress>(ent, 0.0f);
+		registry.emplace<AnimParams>(ent, proj->animParams);
+		registry.emplace<ParticlePhys>(ent, proj->gravity, proj->airdrag);
+		registry.emplace<RenderData>(ent, proj->texture, proj->colorMap, proj->directional);
+
+
+	}
+	proj->weapon = 0;
+}
 
 void CProjectileHandler::Init()
 {
@@ -92,6 +182,12 @@ void CProjectileHandler::Init()
 
 	// register ConfigNotify()
 	configHandler->NotifyOnChange(this, {"MaxParticles", "MaxNanoParticles"});
+    
+	// ensure group is created?
+	registry.group<AnimProgress, AnimParams>();
+	registry.group<Lifetime, Decayrate>();
+	registry.group<Position, Speed, ParticlePhys>();
+	registry.group<Rotation, RotParams>();
 }
 
 void CProjectileHandler::Kill()
@@ -125,6 +221,7 @@ void CProjectileHandler::Kill()
 			fpc.clear();
 		}
 	}
+	registry.clear();
 
 	CCollisionHandler::PrintStats();
 }
@@ -134,6 +231,9 @@ void CProjectileHandler::ConfigNotify(const std::string& key, const std::string&
 {
 	maxParticles     = configHandler->GetInt("MaxParticles");
 	maxNanoParticles = configHandler->GetInt("MaxNanoParticles");
+
+	ECS_MODE = maxParticles % 2;
+	LOG("ECS MODE = %b ECS particles %ld destroyed", ECS_MODE, registry.alive());
 
 	projectiles[false].reserve(static_cast<size_t>(maxParticles) * 2);
 }
@@ -198,6 +298,9 @@ void CProjectileHandler::UpdateProjectilesImpl()
 		}
 	}
 	else {
+		//auto ecs_process_future = std::async(std::launch::async, updateECSParticles);
+		auto ecs_process_future = ThreadPool::Enqueue(updateECSParticles);
+		
 		for_mt_chunk(0, pc.size(), [&pc](int i) {
 			CProjectile* p = pc[i];
 			assert(p != nullptr);
@@ -206,6 +309,7 @@ void CProjectileHandler::UpdateProjectilesImpl()
 			p->Update();
 			MAPPOS_SANITY_CHECK(p->pos);
 		});
+		ecs_process_future->wait();
 	}
 }
 

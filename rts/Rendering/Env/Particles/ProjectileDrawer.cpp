@@ -52,6 +52,11 @@ static bool CProjectileSortingPredicate(const CProjectile* p1, const CProjectile
 
 CProjectileDrawer* projectileDrawer = nullptr;
 
+#include "lib/entt/entt.hpp"
+#include "Rendering/Env/Particles/ECS.h"
+
+extern entt::registry registry; // simple particle system
+
 // can not be a CProjectileDrawer; destruction in global
 // scope might happen after ~EventHandler (referenced by
 // ~EventClient)
@@ -702,6 +707,14 @@ void CProjectileDrawer::DrawProjectilesMiniMap()
 		}
 	}
 
+    /* TODO draw ECSed simpleparticlesystem
+	registry.view<NewSimpleParticleSystem>().each([&](auto ent, auto& proj) {	
+		if (!CanDrawNanoProjectile(&proj, proj.GetAllyteamID())) // TODO not using airlos
+			return;        
+		proj.DrawOnMinimap();
+	});
+    */
+
 	auto& sh = TypedRenderBuffer<VA_TYPE_C>::GetShader();
 
 	glLineWidth(1.0f);
@@ -792,6 +805,32 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 		for (auto p : unsortedProjectiles) {
 			p->Draw();
 		}
+
+		/* TODO draw ecsed  simple particle system
+		{
+			SCOPED_TIMER("Draw::World::Projectiles::ECS");
+
+			const CCamera* cam = CCameraHandler::GetActiveCamera();
+			const auto offset = globalRendering->timeOffset;
+
+			auto view = registry.group<NewSimpleParticleSystem, NewSimpleParticle>();
+			for (auto& ent : view) {
+			auto& system = view.get<NewSimpleParticleSystem>(ent);
+			auto& particle = view.get<NewSimpleParticle>(ent);
+			auto pro = &system;
+			pro->drawPos = pro->GetDrawPos(globalRendering->timeOffset);
+			if (!CanDrawNanoProjectile(pro, pro->GetAllyteamID()))
+				continue;
+			if (drawRefraction && (pro->drawPos.y > pro->GetDrawRadius()))
+				continue;
+			if (!cam->InView(pro->drawPos, pro->GetDrawRadius()))
+				continue;
+			//if (drawSorted)
+			//	mySorted.push_back({&system, &particle});
+			//else
+			system.DrawParticle(&particle);
+			//system.AddEffectsQuad();
+		} // timer scope
 	}
 
 	glEnable(GL_BLEND);
