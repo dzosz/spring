@@ -45,7 +45,7 @@
 CONFIG(int, MaxParticles).defaultValue(10000).headlessValue(0).minimumValue(0);
 CONFIG(int, MaxNanoParticles).defaultValue(10000).headlessValue(0).minimumValue(0);
 
-bool NEW_MODE = false;
+bool ECS_MODE = false;
 
 CR_BIND(CProjectileHandler, )
 CR_REG_METADATA(CProjectileHandler, (
@@ -120,6 +120,8 @@ void CProjectileHandler::Init()
     registry.storage<NewNanoProjectile>().reserve(maxNanoParticles);
     registry.on_construct<NewNanoProjectile>().connect<&increment_nano_use>();
     registry.on_destroy<NewNanoProjectile>().connect<&decrement_nano_use>();
+	
+	ConfigNotify({}, {});
 }
 
 void CProjectileHandler::Kill()
@@ -166,9 +168,9 @@ void CProjectileHandler::ConfigNotify(const std::string& key, const std::string&
 	maxParticles     = configHandler->GetInt("MaxParticles");
 	maxNanoParticles = configHandler->GetInt("MaxNanoParticles");
     
-    NEW_MODE = !NEW_MODE;
-    
-    LOG("ECS MODE = %b ECS particles %ld destroyed", NEW_MODE, registry.alive());
+    ECS_MODE = maxParticles % 2;
+	LOG("ECS MODE = %b ECS particles %ld destroyed", ECS_MODE, registry.alive());
+
 
 	projectiles[false].reserve(static_cast<size_t>(maxParticles) * 2);
 }
@@ -238,7 +240,7 @@ void CProjectileHandler::UpdateProjectilesImpl()
 			registry.view<DeletedEntity>().each([](auto entity) { 
 				registry.destroy(entity);
 			});
-			auto view = registry.view<NewSimpleParticleSystem, NewSimpleParticle>();
+			auto view = registry.group<NewSimpleParticleSystem, NewSimpleParticle>();
 			for (auto& ent : view) {
 				auto& system = view.get<NewSimpleParticleSystem>(ent);
 				auto& p = view.get<NewSimpleParticle>(ent);
@@ -247,8 +249,8 @@ void CProjectileHandler::UpdateProjectilesImpl()
 				}
 			}
 		};
-		
-		// TODO run on thread pool?
+
+
 		auto ecs_process_future = std::async(std::launch::async, std::move(SPS));
 		
 		for_mt_chunk(0, pc.size(), [&pc](int i)        
@@ -275,7 +277,8 @@ void CProjectileHandler::UpdateProjectilesImpl()
 			MAPPOS_SANITY_CHECK(nano.pos);
 		}
 		}
-		ecs_process_future.get();
+
+		ecs_process_future.wait();
 	}
 }
 
@@ -734,7 +737,7 @@ void CProjectileHandler::AddNanoParticle(
 		{tColor[0], tColor[1], tColor[2],  tAlpha},
 	};
 
-    if (NEW_MODE) {
+    if (ECS_MODE) {
         auto entity = registry.create();
         registry.emplace<NewNanoProjectile>(entity, startPos, dif, int(l), colors[globalRendering->teamNanospray]);
     } else
@@ -776,7 +779,7 @@ void CProjectileHandler::AddNanoParticle(
 		{tColor[0], tColor[1], tColor[2],  tAlpha},
 	};
     
-    if (NEW_MODE) {
+    if (ECS_MODE) {
         auto entity = registry.create();
         if (!inverse) {
             registry.emplace<NewNanoProjectile>(entity, startPos, dif * 3.0f, int(len / 3.0f), colors[globalRendering->teamNanospray]);

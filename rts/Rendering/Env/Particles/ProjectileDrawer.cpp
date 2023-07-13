@@ -55,7 +55,8 @@ CProjectileDrawer* projectileDrawer = nullptr;
 #include "lib/entt/entt.hpp"
 #include "Rendering/Env/Particles/Classes/NewNanoProjectile.h"
 #include "Rendering/Env/Particles/Classes/NewSimpleParticleSystem.h"
-extern entt::registry registry; // nanos
+
+extern entt::registry registry; // nanos, simple particle system
 
 // can not be a CProjectileDrawer; destruction in global
 // scope might happen after ~EventHandler (referenced by
@@ -716,7 +717,7 @@ void CProjectileDrawer::DrawProjectilesMiniMap()
 			p->DrawOnMinimap();
 		}
 	}
-    
+
 
 	registry.view<NewNanoProjectile>().each([&](auto ent, auto& nano) {	
 		if (!CanDrawNanoProjectile(&nano, nano.GetAllyteamID()))
@@ -821,9 +822,9 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 			p->Draw();
 		}
         
-        
+
 		{
-		SCOPED_TIMER("Nano::Draw");
+		SCOPED_TIMER("Draw::World::Nano");
 		const CCamera* cam = CCameraHandler::GetActiveCamera();
 		const auto offset = globalRendering->timeOffset;
 		auto view = registry.view<NewNanoProjectile>();  
@@ -843,10 +844,11 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 		}
 		}
 		{
-		SCOPED_TIMER("NewSimpleParticleSystem::Draw");
+		SCOPED_TIMER("Draw::World::NSP");
 		const CCamera* cam = CCameraHandler::GetActiveCamera();
 		const auto offset = globalRendering->timeOffset;
-		auto view = registry.view<NewSimpleParticleSystem, NewSimpleParticle>();  
+	
+		auto view = registry.group<NewSimpleParticleSystem, NewSimpleParticle>();
 		for (auto& ent : view) {
 			auto& system = view.get<NewSimpleParticleSystem>(ent);
 			auto& particle = view.get<NewSimpleParticle>(ent);
@@ -859,8 +861,9 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 			if (!cam->InView(pro->drawPos, pro->GetDrawRadius()))
 				continue;
 			system.DrawParticle(&particle);
+			//system.AddEffectsQuad();
 		}
-		}
+		} // timer scope
 	}
 
 	glEnable(GL_BLEND);
