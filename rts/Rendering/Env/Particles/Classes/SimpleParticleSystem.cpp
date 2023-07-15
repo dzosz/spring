@@ -40,7 +40,7 @@ CR_REG_METADATA(CSimpleParticleSystem,
 		CR_MEMBER(sizeGrowth),
 		CR_MEMBER(sizeMod),
 	CR_MEMBER_ENDFLAG(CM_Config),
-	CR_MEMBER(particles),
+	CR_IGNORED(particles),
 	CR_SERIALIZER(Serialize)
 ))
 
@@ -54,9 +54,7 @@ CR_REG_METADATA_SUB(CSimpleParticleSystem, Particle,
 	CR_MEMBER(rotVal),
 	CR_MEMBER(rotVel),
 	CR_MEMBER(decayrate),
-	CR_MEMBER(size),
-	CR_MEMBER(sizeGrowth),
-	CR_MEMBER(sizeMod)
+	CR_MEMBER(size)
 ))
 
 CSimpleParticleSystem::CSimpleParticleSystem()
@@ -191,10 +189,10 @@ void CSimpleParticleSystem::Draw()
 
 void CSimpleParticleSystem::Update()
 {
-	deleteMe = true;
+	bool del = true;
 
 	for (auto& p: particles) {
-		if (p.life < 1.0f) {
+		if (likely(p.life < 1.0f)) {
 			p.pos    += p.speed;
 			p.speed  += gravity;
 			p.speed  *= airdrag;
@@ -202,10 +200,12 @@ void CSimpleParticleSystem::Update()
 			p.rotVel += rotParams.y; //rot accel
 			p.life   += p.decayrate;
 			p.size    = p.size * sizeMod + sizeGrowth;
-
-			deleteMe = false;
+			del = false;
 		}
 	}
+
+	if (del)
+		deleteMe = true;
 }
 
 void CSimpleParticleSystem::Init(const CUnit* owner, const float3& offset)

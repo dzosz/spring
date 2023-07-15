@@ -6,6 +6,7 @@
 #include "Sim/Projectiles/Projectile.h"
 #include "Rendering/Textures/TextureAtlas.h"
 #include "System/float3.h"
+#include "boost/container/small_vector.hpp"
 
 class CUnit;
 class CColorMap;
@@ -66,12 +67,10 @@ protected:
 		float life;
 		float decayrate;
 		float size;
-		float sizeGrowth;
-		float sizeMod;
 	};
 
 protected:
-	 std::vector<Particle> particles;
+	boost::container::small_vector<Particle, 8> particles;
 };
 
 /**
