@@ -104,6 +104,6 @@ inline void RotationSystem(Rotation& rot, const RotParams& rotParams, float t) {
 	rot.rotVal = rotParams.value.z + rot.rotVel      * t;
 }
 
-void DrawParticle(const Position& pos, const Speed& speed, const Sized& sized,
+void DrawSimpleParticleSystem(const Position& pos, const Speed& speed, const Sized& sized,
 				  const Lifetime& l, const RenderData& data, const Rotation& rot,
 				  const AnimParams& animParams, const AnimProgress& animProgress);

@@ -1,17 +1,11 @@
 #include "ECS.h"
 
-#include "SimpleParticleSystem.h"
-
-#include "GenericParticleProjectile.h"
 #include "Game/Camera.h"
 #include "Game/GlobalUnsynced.h"
 #include "Rendering/GlobalRendering.h"
-#include "Rendering/Env/Particles/ProjectileDrawer.h"
 #include "Rendering/GL/RenderBuffers.h"
 #include "Rendering/Textures/ColorMap.h"
 #include "Sim/Projectiles/ExpGenSpawnableMemberInfo.h"
-#include "Sim/Projectiles/ProjectileMemPool.h"
-#include "System/creg/DefTypes.h"
 #include "System/float3.h"
 #include "System/Log/ILog.h"
 #include "System/SpringMath.h"
@@ -47,12 +41,12 @@ void AddEffectsQuad(const VA_TYPE_TC& tl, const VA_TYPE_TC& tr, const VA_TYPE_TC
 		{ tl.pos, float3{ tl.s, tl.t, layer }, uvInfo, animInfo, tl.c },
 		{ tr.pos, float3{ tr.s, tr.t, layer }, uvInfo, animInfo, tr.c },
 		{ br.pos, float3{ br.s, br.t, layer }, uvInfo, animInfo, br.c },
-		{ bl.pos, float3{ bl.s, bl.t, layer }, uvInfo, animInfo, bl.c },
+		{ bl.pos, float3{ bl.s, bl.t, layer }, uvInfo, animInfo, bl.c }
 	);
 }	
 
 
-void DrawParticle(const Position& pos, const Speed& speed, const Sized& sized,
+void DrawSimpleParticleSystem(const Position& pos, const Speed& speed, const Sized& sized,
 				  const Lifetime& l, const RenderData& data, const Rotation& rot,
 				  const AnimParams& animParams, const AnimProgress& animProgress)
 {
