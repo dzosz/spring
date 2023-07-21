@@ -60,15 +60,15 @@ struct RenderData {
 	
 };
 
-void SizeSystem(Sized& s, SizeChange& change) {
+inline void SizeSystem(Sized& s, SizeChange& change) {
 	s.value = s.value * change.sizeMod + change.sizeGrowth;
 }
 
-bool is_animated(const float3& animParams) {
+inline bool is_animated(const float3& animParams) {
 	return static_cast<int>(animParams.x) <= 1 && static_cast<int>(animParams.y) <= 1;
 }
 
-void AnimationSystem(AnimProgress animProgress, const AnimParams& animParams, const float& t) {
+inline void AnimationSystem(AnimProgress animProgress, const AnimParams& animParams, const float& t) {
 	// const float t = (gs->frameNum - createFrame + globalRendering->timeOffset);
 	if (static_cast<int>(animParams.value.x) <= 1 && static_cast<int>(animParams.value.y) <= 1) {
 		// animProgress = 0.0f; // already zero
@@ -85,19 +85,19 @@ void AnimationSystem(AnimProgress animProgress, const AnimParams& animParams, co
 	}
 }
 
-bool LifetimeSystem(Lifetime& l, const Decayrate& d) {
+inline bool LifetimeSystem(Lifetime& l, const Decayrate& d) {
 	l.value += d.value;	
 	return l.value < 1.0;
 }
 
-void PositionSystem(Position& p, Speed& s, const ParticlePhys& phys) {
+inline void PositionSystem(Position& p, Speed& s, const ParticlePhys& phys) {
 	p.value += s.value;		
 	// TODO update speed here or in separate system?
 	s.value += phys.gravity;
 	s.value *= phys.airdrag;
 }
 
-void RotationSystem(Rotation& rot, const RotParams& rotParams, float t) {
+inline void RotationSystem(Rotation& rot, const RotParams& rotParams, float t) {
 	//const float t = (gs->frameNum - createFrame + globalRendering->timeOffset);
 	// rotParams.y is acceleration in angle per frame^2
 	rot.rotVel = rotParams.value.x + rotParams.value.y * t;

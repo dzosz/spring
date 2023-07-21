@@ -34,9 +34,7 @@
 
 #include "lib/entt/entt.hpp"
 #include "Rendering/Env/Particles/ECS.h"
-#include "Rendering/Env/Particles/Classes/NewNanoProjectile.h"
 #include "Rendering/Env/Particles/Classes/SimpleParticleSystem.h"
-#include "Rendering/Env/Particles/Classes/NewSimpleParticleSystem.h"
 
 // reserve 5% of maxNanoParticles for important stuff such as capture and reclaim other teams' units
 #define NORMAL_NANO_PRIO 0.95f
@@ -78,12 +76,6 @@ static void updateECSParticles() {
 	SCOPED_TIMER("Sim::Projectiles::ECS");
 	// const float t = (gs->frameNum - createFrame + globalRendering->timeOffset);
 
-	/*
-	registry.view<DeletedEntity>().each([](auto entity) { 
-	registry.destroy(entity);
-	});
-	*/
-
 	registry.group<Lifetime, Decayrate>().each([&](auto entity, auto& lifetime, auto& decayrate) { 
 			if (!LifetimeSystem(lifetime, decayrate)) {
 			//registry.emplace<DeletedEntity>(entity);
@@ -106,15 +98,6 @@ static void updateECSParticles() {
 			RotationSystem(rot, rotparams, t);
 			});
 
-	/*
-	auto view = registry.group<NewSimpleParticleSystem, NewSimpleParticle>();
-	for (auto& ent : view) {
-		auto& system = view.get<NewSimpleParticleSystem>(ent);
-		auto& p = view.get<NewSimpleParticle>(ent);
-		if (!system.Update(p))
-			registry.emplace<DeletedEntity>(ent);
-	}
-	*/
 }
 
 void CProjectileHandler::AddSimpleParticleSystem(CSimpleParticleSystem* proj, CUnit* owner, const float3& pos) {

@@ -21,6 +21,7 @@ class CFeature;
 class CPlasmaRepulser;
 class CGroundFlash;
 struct UnitDef;
+struct CSimpleParticleSystem;
 
 typedef std::vector<CGroundFlash*> GroundFlashContainer;
 typedef std::vector<FlyingPiece> FlyingPieceContainer;
@@ -78,6 +79,7 @@ public:
 	);
 	void AddNanoParticle(const float3, const float3, const UnitDef*, int team, bool highPriority);
 	void AddNanoParticle(const float3, const float3, const UnitDef*, int team, float radius, bool inverse, bool highPriority);
+	void AddSimpleParticleSystem(CSimpleParticleSystem* proj, CUnit* owner, const float3& pos);
 
 public:
 	int maxParticles = 0;

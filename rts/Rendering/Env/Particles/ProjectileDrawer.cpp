@@ -641,6 +641,7 @@ void CProjectileDrawer::DrawProjectileNow(CProjectile* pro, bool drawReflection,
 
 void CProjectileDrawer::DrawProjectilesShadow(int modelType)
 {
+	SCOPED_TIMER("Draw::Projectiles::Shadow");
 	const auto& mdlRenderer = modelRenderers[modelType];
 	// const auto& projBinKeys = mdlRenderer.GetObjectBinKeys();
 
@@ -682,6 +683,7 @@ void CProjectileDrawer::DrawProjectileShadow(CProjectile* p)
 
 void CProjectileDrawer::DrawProjectilesMiniMap()
 {
+	SCOPED_TIMER("Draw::Projectiles::Minimap");
 	for (int modelType = MODELTYPE_3DO; modelType < MODELTYPE_CNT; modelType++) {
 		const auto& mdlRenderer = modelRenderers[modelType];
 		// const auto& projBinKeys = mdlRenderer.GetObjectBinKeys();
@@ -737,6 +739,7 @@ void CProjectileDrawer::DrawProjectilesMiniMap()
 
 void CProjectileDrawer::DrawFlyingPieces(int modelType) const
 {
+	SCOPED_TIMER("Draw::Projectiles::Flying");
 	const FlyingPieceContainer& container = projectileHandler.flyingPieces[modelType];
 
 	if (container.empty())
@@ -798,6 +801,8 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 		else
 			std::sort(sortedProjectiles.begin(), sortedProjectiles.end(), CProjectileSortingPredicate);
 
+		SCOPED_TIMER("Draw::Projectiles::PDraw");
+		{
 		for (auto p : sortedProjectiles) {
 			p->Draw();
 		}
@@ -809,28 +814,9 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 		/* TODO draw ecsed  simple particle system
 		{
 			SCOPED_TIMER("Draw::World::Projectiles::ECS");
-
-			const CCamera* cam = CCameraHandler::GetActiveCamera();
-			const auto offset = globalRendering->timeOffset;
-
-			auto view = registry.group<NewSimpleParticleSystem, NewSimpleParticle>();
-			for (auto& ent : view) {
-			auto& system = view.get<NewSimpleParticleSystem>(ent);
-			auto& particle = view.get<NewSimpleParticle>(ent);
-			auto pro = &system;
-			pro->drawPos = pro->GetDrawPos(globalRendering->timeOffset);
-			if (!CanDrawNanoProjectile(pro, pro->GetAllyteamID()))
-				continue;
-			if (drawRefraction && (pro->drawPos.y > pro->GetDrawRadius()))
-				continue;
-			if (!cam->InView(pro->drawPos, pro->GetDrawRadius()))
-				continue;
-			//if (drawSorted)
-			//	mySorted.push_back({&system, &particle});
-			//else
-			system.DrawParticle(&particle);
-			//system.AddEffectsQuad();
-		} // timer scope
+		}
+		*/
+		}
 	}
 
 	glEnable(GL_BLEND);

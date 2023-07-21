@@ -9,6 +9,7 @@
 
 class CUnit;
 class CColorMap;
+class CProjectileHandler;
 
 class CSimpleParticleSystem : public CProjectile
 {
@@ -16,6 +17,7 @@ class CSimpleParticleSystem : public CProjectile
 	CR_DECLARE_SUB(Particle)
 
 public:
+	friend class CProjectileHandler;
 	CSimpleParticleSystem();
 	virtual ~CSimpleParticleSystem() { particles.clear(); }
 
