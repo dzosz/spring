@@ -48,33 +48,6 @@ CR_REG_METADATA_SUB(CQuadField, Quad, (
 
 CQuadField quadField;
 
-template <typename T>
-static bool is_marked(T* p, int num) {
-	if (likely(p->quads.size() <= 1))
-		return false;
-	if (p->tempNum == num)
-		return true;
-	p->tempNum = num;
-	return false;
-}
-
-template <typename T>
-static bool is_marked_mt(T* p, int num, int threadId) {
-	if (likely(p->quads.size() <= 1))
-		return false;
-	if (p->mtTempNum[threadId] == num)
-		return true;
-	p->mtTempNum[threadId] = num;
-	return false;
-}
-
-template <>
-bool is_marked_mt<CFeature>(CFeature* p, int num, int threadId) {
-	if (p->mtTempNum[threadId] == num)
-		return true;
-	p->mtTempNum[threadId] = num;
-	return false;
-}
 
 #ifndef UNIT_TEST
 /*
@@ -582,9 +555,10 @@ void CQuadField::GetUnits(QuadFieldQuery& qfq, const float3& pos, float radius)
 
 	for (const int qi: *qfQuery.quads) {
 		for (CUnit* u: baseQuads[qi].units) {
-			if (is_marked_mt(u, tempNum, curThread))
+			if (u->mtTempNum[curThread] == tempNum)
 				continue;
 
+			u->mtTempNum[curThread] = tempNum;
 			qfq.units->push_back(u);
 		}
 	}
@@ -603,8 +577,10 @@ void CQuadField::GetUnitsExact(QuadFieldQuery& qfq, const float3& pos, float rad
 
 	for (const int qi: *qfQuery.quads) {
 		for (CUnit* u: baseQuads[qi].units) {
-			if (is_marked_mt(u, tempNum, curThread))
+			if (u->mtTempNum[curThread] == tempNum)
 				continue;
+
+			u->mtTempNum[curThread] = tempNum;
 
 			const float totRad       = radius + u->radius;
 			const float totRadSq     = totRad * totRad;
@@ -633,8 +609,11 @@ void CQuadField::GetUnitsExact(QuadFieldQuery& qfq, const float3& mins, const fl
 
 	for (const int qi: *qfQuery.quads) {
 		for (CUnit* unit: baseQuads[qi].units) {
-			if (is_marked_mt(unit, tempNum, curThread))
+
+			if (unit->mtTempNum[curThread] == tempNum)
 				continue;
+
+			unit->mtTempNum[curThread] = tempNum;
 
 			const float3& pos = unit->pos;
 			if (pos.x < mins.x || pos.x > maxs.x)
@@ -661,8 +640,10 @@ void CQuadField::GetFeaturesExact(QuadFieldQuery& qfq, const float3& pos, float 
 
 	for (const int qi: *qfQuery.quads) {
 		for (CFeature* f: baseQuads[qi].features) {
-			if (is_marked_mt(f, tempNum, curThread))
+			if (f->mtTempNum[curThread] == tempNum)
 				continue;
+
+			f->mtTempNum[curThread] = tempNum;
 
 			const float totRad       = radius + f->radius;
 			const float totRadSq     = totRad * totRad;
@@ -691,8 +672,10 @@ void CQuadField::GetFeaturesExact(QuadFieldQuery& qfq, const float3& mins, const
 
 	for (const int qi: *qfQuery.quads) {
 		for (CFeature* feature: baseQuads[qi].features) {
-			if (is_marked_mt(feature, tempNum, curThread))
+			if (feature->mtTempNum[curThread] == tempNum)
 				continue;
+
+			feature->mtTempNum[curThread] = tempNum;
 
 			const float3& pos = feature->pos;
 			if (pos.x < mins.x || pos.x > maxs.x)
@@ -718,8 +701,10 @@ void CQuadField::GetProjectilesExact(QuadFieldQuery& qfq, const float3& pos, flo
 
 	for (const int qi: *qfQuery.quads) {
 		for (CProjectile* p: baseQuads[qi].projectiles) {
-			if (is_marked(p, tempNum)) 
+			if (p->tempNum == tempNum)
 				continue;
+
+			p->tempNum = tempNum;
 
 			if (pos.SqDistance(p->pos) >= Square(radius + p->radius))
 				continue;
@@ -740,8 +725,10 @@ void CQuadField::GetProjectilesExact(QuadFieldQuery& qfq, const float3& mins, co
 
 	for (const int qi: *qfQuery.quads) {
 		for (CProjectile* p: baseQuads[qi].projectiles) {
-			if (is_marked(p, tempNum))
+			if (p->tempNum == tempNum)
 				continue;
+
+			p->tempNum = tempNum;
 
 			const float3& pos = p->pos;
 			if (pos.x < mins.x || pos.x > maxs.x)
@@ -775,8 +762,11 @@ void CQuadField::GetSolidsExact(
 
 	for (const int qi: *qfQuery.quads) {
 		for (CUnit* u: baseQuads[qi].units) {
-			if (is_marked_mt(u, tempNum, curThread))
+			if (u->mtTempNum[curThread] == tempNum)
 				continue;
+
+			u->mtTempNum[curThread] = tempNum;
+
 			if (!u->HasPhysicalStateBit(physicalStateBits))
 				continue;
 			if (!u->HasCollidableStateBit(collisionStateBits))
@@ -788,8 +778,10 @@ void CQuadField::GetSolidsExact(
 		}
 
 		for (CFeature* f: baseQuads[qi].features) {
-			if (is_marked_mt(f, tempNum, curThread))
+			if (f->mtTempNum[curThread] == tempNum)
 				continue;
+
+			f->mtTempNum[curThread] = tempNum;
 
 			if (!f->HasPhysicalStateBit(physicalStateBits))
 				continue;
@@ -818,8 +810,10 @@ bool CQuadField::NoSolidsExact(
 
 	for (const int qi: *qfQuery.quads) {
 		for (CUnit* u: baseQuads[qi].units) {
-			if (is_marked(u, tempNum))
+			if (u->tempNum == tempNum)
 				continue;
+
+			u->tempNum = tempNum;
 
 			if (!u->HasPhysicalStateBit(physicalStateBits))
 				continue;
@@ -871,8 +865,10 @@ void CQuadField::GetUnitsAndFeaturesColVol(
 
 		for (CUnit* u: quad.units) {
 			// prevent double adding
-			if (is_marked(u, tempNum))
+			if (u->tempNum == tempNum)
 				continue;
+
+			u->tempNum = tempNum;
 
 			const auto* colvol = &u->collisionVolume;
 			const float totRad = radius + colvol->GetBoundingRadius();
