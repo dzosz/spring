@@ -120,6 +120,10 @@ void CProjectileHandler::AddSimpleParticleSystem(CSimpleParticleSystem* proj, CU
 		float size = proj->particleSize + guRNG.NextFloat()*proj->particleSizeSpread;
 
 		auto ent = registry.create();
+		registry.emplace<SimpleParticleSystemTag>(ent);
+		registry.emplace<DrawRadius>(ent, proj->drawRadius);
+		registry.emplace<DrawPosition>(ent, proj->drawPos);
+		registry.emplace<AlliedTeam>(ent, proj->allyteamID); // TODO maybe ignore this check if team is not set?
 		registry.emplace<Position>(ent, pos);
 		registry.emplace<Speed>(ent, speed);
 		registry.emplace<Rotation>(ent, rotVal, rotVel);
@@ -132,8 +136,6 @@ void CProjectileHandler::AddSimpleParticleSystem(CSimpleParticleSystem* proj, CU
 		registry.emplace<AnimParams>(ent, proj->animParams);
 		registry.emplace<ParticlePhys>(ent, proj->gravity, proj->airdrag);
 		registry.emplace<RenderData>(ent, proj->texture, proj->colorMap, proj->directional);
-
-
 	}
 	proj->weapon = 0;
 }

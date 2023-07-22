@@ -13,6 +13,14 @@ struct Position {
 	float3 value;
 };
 
+struct DrawPosition {
+	float3 value;
+};
+
+struct DrawRadius {
+	float value;
+};
+
 struct Speed {
 	float4 value;
 };
@@ -51,12 +59,25 @@ struct SizeChange {
 	float sizeGrowth;
 };
 
+struct AlliedTeam {
+	int value;
+};
+
+struct PhysDelta {
+	float timeSinceLastFrame; // globalRendering->timeOffset
+};
+
+
 class AtlasedTexture;
 class CColorMap;
 struct RenderData {
 	AtlasedTexture* texture;
 	CColorMap* colorMap;
 	bool directional;
+};
+
+// Drawable tags
+struct SimpleParticleSystemTag {
 	
 };
 
@@ -104,6 +125,4 @@ inline void RotationSystem(Rotation& rot, const RotParams& rotParams, float t) {
 	rot.rotVal = rotParams.value.z + rot.rotVel      * t;
 }
 
-void DrawSimpleParticleSystem(const Position& pos, const Speed& speed, const Sized& sized,
-				  const Lifetime& l, const RenderData& data, const Rotation& rot,
-				  const AnimParams& animParams, const AnimProgress& animProgress);
+void DrawSystem();

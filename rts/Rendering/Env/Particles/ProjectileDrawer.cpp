@@ -326,6 +326,8 @@ void CProjectileDrawer::Init() {
 	}
 	ViewResize();
 	EnableSoften(configHandler->GetInt("SoftParticles"));
+
+	registry.ctx().insert_or_assign(PhysDelta{});
 }
 
 void CProjectileDrawer::Kill() {
@@ -709,14 +711,6 @@ void CProjectileDrawer::DrawProjectilesMiniMap()
 		}
 	}
 
-    /* TODO draw ECSed simpleparticlesystem
-	registry.view<NewSimpleParticleSystem>().each([&](auto ent, auto& proj) {	
-		if (!CanDrawNanoProjectile(&proj, proj.GetAllyteamID())) // TODO not using airlos
-			return;        
-		proj.DrawOnMinimap();
-	});
-    */
-
 	auto& sh = TypedRenderBuffer<VA_TYPE_C>::GetShader();
 
 	glLineWidth(1.0f);
@@ -811,12 +805,13 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 			p->Draw();
 		}
 
-		/* TODO draw ecsed  simple particle system
 		{
 			SCOPED_TIMER("Draw::World::Projectiles::ECS");
+			registry.ctx().get<PhysDelta>().timeSinceLastFrame = globalRendering->timeOffset;
+			// TODO implement sorting for ECS particles
+			DrawSystem();
 		}
-		*/
-		}
+		} // scoped timer
 	}
 
 	glEnable(GL_BLEND);
