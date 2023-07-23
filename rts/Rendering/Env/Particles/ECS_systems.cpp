@@ -1,3 +1,23 @@
+/*
+ECS checklist:
+
+Done:
+* Migrated SimpleParticleProjectile to ECS
+* Migrated CBitmapMuzzleFlame to ECS
+* Drawing
+* Parallel Projectiles::Sim() calculation
+* Thread safety for both legacy and ECS projectiles in explosion generator
+
+To do:
+* Create graph for parallel execution of ECS tasks
+* Draw in sorted order ECS particles
+* Resolve issue with slow DrawSystem()
+* Resolve issue with slow Sim::update() ( still slower than legacy )
+* Create new Spawner class (see explosion generator) that doesn't require legacy Particles to exist
+  (currently ECS particles copy out data from original Particles, then deallocates them)
+* Add minimap and shadow drawing for ECS particles
+
+*/
 #include "ECS_systems.h"
 
 #include "Game/Camera.h"

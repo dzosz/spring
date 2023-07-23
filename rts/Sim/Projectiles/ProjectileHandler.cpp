@@ -177,18 +177,18 @@ void CProjectileHandler::AddECSProjectile(CBitmapMuzzleFlame* proj) {
 
 static std::vector<CProjectile*> queuedProjectiles; 
 
-// COMMENT this approach can already be merged to master as it provides safety to projectiles container
-// and avoids duplicated iteration over projectiles[synced] containers
+// COMMENT this approach can already be merged to master as it provides safety to projectiles container.
+// It avoids duplicated iteration over projectiles[synced] containers
+// and gives control when exactly to Update() new particles
 void CProjectileHandler::AddNewProjectileToQueue(CProjectile* proj) {
-	// called multithreaded context
-	// already locks Projectile::mut
+	// called from multithreaded context, already locks Projectile::mut
 	queuedProjectiles.push_back(proj);
 }
 
 void CProjectileHandler::DrainNewProjectileQueue() {
 	for (auto* proj : queuedProjectiles) {
 		if (!proj->ECS) {
-			// legacy projectiles won't be here
+			// legacy projectiles aren't here
 			throw 333;
 		}
 		auto ptr = dynamic_cast<CSimpleParticleSystem*>(proj);
