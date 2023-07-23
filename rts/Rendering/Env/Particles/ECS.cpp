@@ -231,28 +231,29 @@ static void DrawClass(SimpleParticleSystemTag)
 	});
 }
 
-static void DrawCBitmapMuzzleFlame(entt::entity ent)
+template <typename ViewT>
+static void DrawCBitmapMuzzleFlame(entt::entity ent, ViewT&& view)
 {
-	auto& life = registry.get<const Lifetime>(ent).value;
-	auto& sizeGrowth = registry.get<const SizeChange>(ent).sizeGrowth;
-	auto& size = registry.get<const Sized>(ent).value;
-	auto& length = registry.get<const Length>(ent).value;
+	auto& life = view.template get<const Lifetime>(ent).value;
+	auto& sizeGrowth = view.template get<const SizeChange>(ent).sizeGrowth;
+	auto& size = view.template get<const Sized>(ent).value;
+	auto& length = view.template get<const Length>(ent).value;
 	const float igrowth = sizeGrowth * (1.0f - Square(1.0f - life));
 	
 	const float isize = size * (igrowth + 1.0f);
 	const float ilength = length * (igrowth + 1.0f);
 	
-	auto& radius = registry.get<DrawRadius>(ent).value;
+	auto& radius = view.template get<DrawRadius>(ent).value;
 	radius = std::max(isize, ilength);
 	
-	auto& colorMap = registry.get<const RenderData>(ent).colorMap;
+	auto& colorMap = view.template get<const RenderData>(ent).colorMap;
 	
 	unsigned char col[4];
 	colorMap->GetColor(col, life);
 	
-	auto& pos = registry.get<const Position>(ent).value;
+	auto& pos = view.template get<const Position>(ent).value;
 	auto& frontOffset = registry.get<const FrontOffset>(ent).value;	
-	auto dir = registry.get<const Direction>(ent).value;
+	auto dir = view.template get<const Direction>(ent).value;
 	float3 fpos = pos + dir * frontOffset * ilength;
 	
 	const float3 zdir = (std::fabs(dir.dot(UpVector)) >= 0.99f)? FwdVector: UpVector;
@@ -276,17 +277,17 @@ static void DrawCBitmapMuzzleFlame(entt::entity ent)
 		 -xdir * isize - ydir * isize
 	};
 	
-	auto& rotVal = registry.get<const Rotation>(ent).rotVal;
+	auto& rotVal = view.template get<const Rotation>(ent).rotVal;
 	if (math::fabs(rotVal) > 0.01f) {
 		for (auto& b : bounds)
 			b = b.rotate(rotVal, dir);
 	}
 	
-	auto& animParams = registry.get<const AnimParams>(ent).value;
-	auto& animProgress = registry.get<const AnimProgress>(ent).value;
+	auto& animParams = view.template get<const AnimParams>(ent).value;
+	auto& animProgress = view.template get<const AnimProgress>(ent).value;
 	float3 animInfo = { animParams.x, animParams.y, animProgress };
 	
-	auto& sideTexture = registry.get<const RenderData>(ent).extraTexture;
+	auto& sideTexture = view.template get<const RenderData>(ent).extraTexture;
 	if (IsValidTexture(sideTexture)) {
 		AddEffectsQuad(
 			{ pos + bounds[0], sideTexture->xstart, sideTexture->ystart, col },
@@ -304,7 +305,7 @@ static void DrawCBitmapMuzzleFlame(entt::entity ent)
 		);
 	}
 
-	auto& frontTexture = registry.get<const RenderData>(ent).texture;
+	auto& frontTexture = view.template get<const RenderData>(ent).texture;
 	if (IsValidTexture(frontTexture)) {
 		AddEffectsQuad(
 			{ fpos + bounds[8 ], frontTexture->xstart, frontTexture->ystart, col },
@@ -318,19 +319,26 @@ static void DrawCBitmapMuzzleFlame(entt::entity ent)
 
 static void DrawClass(CBitmapMuzzleFlameTag)
 {
-	registry.view<CBitmapMuzzleFlameTag>().each([&](auto ent) {	
-		auto& pos = registry.get<Position>(ent);
-		auto& drawPos = registry.get<DrawPosition>(ent);
-		auto& drawRadius = registry.get<DrawRadius>(ent);
-		auto& allyteam = registry.get<AlliedTeam>(ent);
-		if (!isParticleVisible(pos, drawPos, drawRadius, allyteam)) 
-			return;
-		DrawCBitmapMuzzleFlame(ent);
-	});
+	auto view = registry.view<CBitmapMuzzleFlameTag, const Position, const DrawPosition, DrawRadius, const AlliedTeam,
+			const Lifetime, const SizeChange, const Sized, const Length, const RenderData,
+			const FrontOffset, const Direction, const Rotation, const AnimParams, 
+			const AnimProgress
+			>();
+	for (auto ent : view) {
+		auto& pos = view.get<Position>(ent);
+		auto& drawPos = view.get<DrawPosition>(ent);
+		auto& drawRadius = view.get<DrawRadius>(ent);
+		auto& allyteam = view.get<AlliedTeam>(ent);
+		if (!isParticleVisible(pos, drawPos, drawRadius, allyteam)) {
+			continue;
+		}
+		DrawCBitmapMuzzleFlame(ent, view);
+	};
 }
 
 void DrawSystem()
-{	
+{
+	// FIXME performance issues. maybe add entt::observer and check visibility first?
 	UpdateAnimProgress();	
 	UpdateDrawPos();
 	DrawClass(SimpleParticleSystemTag{});
