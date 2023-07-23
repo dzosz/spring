@@ -46,7 +46,7 @@
 CONFIG(int, MaxParticles).defaultValue(10000).headlessValue(0).minimumValue(0);
 CONFIG(int, MaxNanoParticles).defaultValue(2000).headlessValue(0).minimumValue(0);
 
-bool ECS_MODE = false;
+bool ECS_MODE = false; // runtime switch to enable/disable ECS to see live performance difference
 
 CR_BIND(CProjectileHandler, )
 CR_REG_METADATA(CProjectileHandler, (
