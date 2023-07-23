@@ -13,10 +13,12 @@ To do:
   Most projectiles only update lifetime in Sim() except for SimpleParticleSystem and 
   unsynced projectiles that interact with environment - e.g. Dirt projectile disappears
   after hitting the ground so I guess it needs to be updated in Sim() ?
+* Improve approach to Drawing. For now the drawing functions were copied over from legacy classes.
+  What is the fastest way to draw visible projectiles? 
+* Add ordered drawing to ECS particles
 * Create graph for parallel execution of ECS tasks
-* Draw in sorted order ECS particles
-* Resolve issue with slow DrawSystem()
-* Resolve issue with slow Sim::update() ( still slower than legacy )
+* Resolve issue with drawing being slower than legacy
+* Resolve issue with Sim::update() being slower than legacy
 * Create new Spawner class (see explosion generator) that doesn't require legacy Particles to exist
   (currently ECS particles copy out data from original Particles, then deallocates them)
 * Add minimap and shadow drawing for ECS particles
