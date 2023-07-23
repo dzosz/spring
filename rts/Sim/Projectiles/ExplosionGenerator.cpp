@@ -989,7 +989,7 @@ bool CCustomExplosionGenerator::Explosion(
 				return false;
 			static const int SimpleParticleID = CExpGenSpawnable::GetSpawnableID("CSimpleParticleSystem");
 			static const int CBitmapMuzzleFlameID = CExpGenSpawnable::GetSpawnableID("CBitmapMuzzleFlame");
-			if (id == SimpleParticleID || id == CBitmapMuzzleFlameID) {
+			if (id == SimpleParticleID) {
 				auto* proj = static_cast<CSimpleParticleSystem*>(p);
 				proj->ECS = 1; // workaround to make the projectile not add to projHandler in Init()
 				proj->Init(owner, pos);
