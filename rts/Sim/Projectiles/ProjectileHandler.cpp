@@ -75,7 +75,7 @@ static void updateECSParticles() {
 	// TODO for some reason this approach turned out to be slower even when the game is overwhelmed
 	// with SimpleParticleSystem
 	// Executing each System on separate thread did not bring any benefit
-	SCOPED_TIMER("Sim::Projectiles::ECS");
+	SCOPED_TIMER("Sim::Projectiles::Update::ECS");
 	registry.ctx().get<PhysDelta>().frameNum = gs->frameNum;
 
 	{		
@@ -94,7 +94,7 @@ static void updateECSParticles() {
 		SpeedParticlePhysSystem(speed, phys);
 	});
 	
-	registry.view<Rotation, RotParams, AnimParams>().each([&](auto entity, auto& rot, auto& rotparams, const auto& animParams) { 		
+	registry.view<Rotation, const RotParams, const AnimParams>().each([&](auto entity, auto& rot, const auto& rotparams, const auto& animParams) {
 		const float t = (gs->frameNum - animParams.createFrame + globalRendering->timeOffset);
 		RotationSystem(rot, rotparams, t);
 	});
@@ -163,7 +163,7 @@ void CProjectileHandler::AddECSProjectile(CBitmapMuzzleFlame* proj) {
 	registry.emplace<AnimParams>(ent, proj->animParams, proj->createFrame);
 	//registry.emplace<ParticlePhys>(ent, 0.0f, 1.0f);
 	registry.emplace<RenderData>(ent, proj->frontTexture, proj->sideTexture, proj->colorMap, false);
-	
+
 	projMemPool.free(proj);
 }
 
@@ -273,7 +273,7 @@ void CProjectileHandler::ConfigNotify(const std::string& key, const std::string&
 	maxNanoParticles = configHandler->GetInt("MaxNanoParticles");
 
 	ECS_MODE = maxParticles % 2;
-	LOG("ECS MODE = %b ECS particles %ld destroyed", ECS_MODE, registry.alive());
+	LOG("ECS MODE = %b ECS particles %ld alive", ECS_MODE, registry.alive());
 
 	projectiles[false].reserve(static_cast<size_t>(maxParticles) * 2);
 }

@@ -97,7 +97,7 @@ struct SimpleParticleSystemTag {};
 struct CBitmapMuzzleFlameTag {};
 	
 	
-inline void GrowSizeSystem(Sized& s, SizeChange& change) {
+inline void GrowSizeSystem(Sized& s, const SizeChange& change) {
 	// TODO optionally multiply by timeOffset if executed in Draw context
 	s.value = s.value * change.sizeMod + change.sizeGrowth; 
 }
