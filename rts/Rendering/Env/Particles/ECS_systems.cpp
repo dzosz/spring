@@ -9,6 +9,10 @@ Done:
 * Thread safety for both legacy and ECS projectiles in explosion generator
 
 To do:
+* Make clear distinction what should be computed in Sim() and what in Draw() contexts.
+  Most projectiles only update lifetime in Sim() except for SimpleParticleSystem and 
+  unsynced projectiles that interact with environment - e.g. Dirt projectile disappears
+  after hitting the ground so I guess it needs to be updated in Sim() ?
 * Create graph for parallel execution of ECS tasks
 * Draw in sorted order ECS particles
 * Resolve issue with slow DrawSystem()
