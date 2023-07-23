@@ -27,6 +27,7 @@ static TypedRenderBuffer<VA_TYPE_PROJ>& GetPrimaryRenderBuffer()
 	return RenderBuffer::GetTypedRenderBuffer<VA_TYPE_PROJ>();
 }
 
+
 static void AddEffectsQuad(const VA_TYPE_TC& tl, const VA_TYPE_TC& tr, const VA_TYPE_TC& br, const VA_TYPE_TC& bl, const float3& animInfo)
 {
 	float minS = std::numeric_limits<float>::max()   ; float minT = std::numeric_limits<float>::max()   ;
@@ -51,7 +52,12 @@ static void AddEffectsQuad(const VA_TYPE_TC& tl, const VA_TYPE_TC& tr, const VA_
 		{ br.pos, float3{ br.s, br.t, layer }, uvInfo, animInfo, br.c },
 		{ bl.pos, float3{ bl.s, bl.t, layer }, uvInfo, animInfo, bl.c }
 	);
-}	
+}
+
+static bool IsValidTexture(const AtlasedTexture* tex)
+{
+	return tex && tex != &CTextureAtlas::dummy;
+}
 
 static void DrawSimpleParticleSystem(const Position& pos, const Speed& speed, const Sized& sized,
 				  const Lifetime& l, const RenderData& data, const Rotation& rot,
@@ -149,11 +155,35 @@ static void DrawSimpleParticleSystem(const Position& pos, const Speed& speed, co
 }
 
 static void UpdateDrawPos()
-{ 
-	const float t = registry.ctx().get<PhysDelta>().timeSinceLastFrame;
+{
+	const float t = registry.ctx().get<PhysDelta>().timeOffset;
 	registry.view<const Position, const Speed, DrawPosition>().each([&](
 		auto ent, const Position& pos, const Speed& speed, DrawPosition& drawPos) {
 		drawPos.value = (speed.value.w != 0.0f) ? (pos.value + speed.value * t) : pos.value;
+	});
+	registry.view<const Position, DrawPosition>(entt::exclude<Speed>).each([&](
+		auto ent, const Position& pos, DrawPosition& drawPos) {
+		drawPos.value = pos.value;
+	});
+}
+
+static void UpdateAnimProgress()
+{	
+	registry.view<AnimProgress, AnimParams>().each([&](auto ent, auto& animProgress, auto& animParams) {
+		const float t = (registry.ctx().get<PhysDelta>().frameNum - animParams.createFrame +
+						 registry.ctx().get<PhysDelta>().timeOffset);
+		if (static_cast<int>(animParams.value.x) <= 1 && static_cast<int>(animParams.value.y) <= 1) {
+			animProgress.value = 0.0f;
+			return;
+		}
+		
+		const float animSpeed = math::fabs(animParams.value.z);
+		if (animParams.value.z < 0.0f) {
+			animProgress.value = 1.0f - math::fabs(math::fmod(t, 2.0f * animSpeed) / animSpeed - 1.0f);
+		}
+		else {
+			animProgress.value = math::fmod(t, animSpeed) / animSpeed;
+		}
 	});
 }
 
@@ -201,7 +231,108 @@ static void DrawClass(SimpleParticleSystemTag)
 	});
 }
 
-void DrawSystem() {
+static void DrawCBitmapMuzzleFlame(entt::entity ent)
+{
+	auto& life = registry.get<const Lifetime>(ent).value;
+	auto& sizeGrowth = registry.get<const SizeChange>(ent).sizeGrowth;
+	auto& size = registry.get<const Sized>(ent).value;
+	auto& length = registry.get<const Length>(ent).value;
+	const float igrowth = sizeGrowth * (1.0f - Square(1.0f - life));
+	
+	const float isize = size * (igrowth + 1.0f);
+	const float ilength = length * (igrowth + 1.0f);
+	
+	auto& radius = registry.get<DrawRadius>(ent).value;
+	radius = std::max(isize, ilength);
+	
+	auto& colorMap = registry.get<const RenderData>(ent).colorMap;
+	
+	unsigned char col[4];
+	colorMap->GetColor(col, life);
+	
+	auto& pos = registry.get<const Position>(ent).value;
+	auto& frontOffset = registry.get<const FrontOffset>(ent).value;	
+	auto dir = registry.get<const Direction>(ent).value;
+	float3 fpos = pos + dir * frontOffset * ilength;
+	
+	const float3 zdir = (std::fabs(dir.dot(UpVector)) >= 0.99f)? FwdVector: UpVector;
+	const float3 xdir = (dir.cross(zdir)).SafeANormalize();
+	const float3 ydir = (dir.cross(xdir)).SafeANormalize();
+	
+	std::array<float3, 12> bounds = {
+		  ydir * isize                ,
+		  ydir * isize + dir * ilength,
+		 -ydir * isize + dir * ilength,
+		 -ydir * isize                ,
+	
+		  xdir * isize                ,
+		  xdir * isize + dir * ilength,
+		 -xdir * isize + dir * ilength,
+		 -xdir * isize                ,
+	
+		 -xdir * isize + ydir * isize,
+		  xdir * isize + ydir * isize,
+		  xdir * isize - ydir * isize,
+		 -xdir * isize - ydir * isize
+	};
+	
+	auto& rotVal = registry.get<const Rotation>(ent).rotVal;
+	if (math::fabs(rotVal) > 0.01f) {
+		for (auto& b : bounds)
+			b = b.rotate(rotVal, dir);
+	}
+	
+	auto& animParams = registry.get<const AnimParams>(ent).value;
+	auto& animProgress = registry.get<const AnimProgress>(ent).value;
+	float3 animInfo = { animParams.x, animParams.y, animProgress };
+	
+	auto& sideTexture = registry.get<const RenderData>(ent).extraTexture;
+	if (IsValidTexture(sideTexture)) {
+		AddEffectsQuad(
+			{ pos + bounds[0], sideTexture->xstart, sideTexture->ystart, col },
+			{ pos + bounds[1], sideTexture->xend  , sideTexture->ystart, col },
+			{ pos + bounds[2], sideTexture->xend  , sideTexture->yend  , col },
+			{ pos + bounds[3], sideTexture->xstart, sideTexture->yend  , col },
+			animInfo
+		);
+		AddEffectsQuad(
+			{ pos + bounds[4], sideTexture->xstart, sideTexture->ystart, col },
+			{ pos + bounds[5], sideTexture->xend  , sideTexture->ystart, col },
+			{ pos + bounds[6], sideTexture->xend  , sideTexture->yend  , col },
+			{ pos + bounds[7], sideTexture->xstart, sideTexture->yend  , col },
+			animInfo
+		);
+	}
+
+	auto& frontTexture = registry.get<const RenderData>(ent).texture;
+	if (IsValidTexture(frontTexture)) {
+		AddEffectsQuad(
+			{ fpos + bounds[8 ], frontTexture->xstart, frontTexture->ystart, col },
+			{ fpos + bounds[9 ], frontTexture->xend  , frontTexture->ystart, col },
+			{ fpos + bounds[10], frontTexture->xend  , frontTexture->yend , col },
+			{ fpos + bounds[11], frontTexture->xstart, frontTexture->yend , col },
+			animInfo
+		);
+	}
+}
+
+static void DrawClass(CBitmapMuzzleFlameTag)
+{
+	registry.view<CBitmapMuzzleFlameTag>().each([&](auto ent) {	
+		auto& pos = registry.get<Position>(ent);
+		auto& drawPos = registry.get<DrawPosition>(ent);
+		auto& drawRadius = registry.get<DrawRadius>(ent);
+		auto& allyteam = registry.get<AlliedTeam>(ent);
+		if (!isParticleVisible(pos, drawPos, drawRadius, allyteam)) 
+			return;
+		DrawCBitmapMuzzleFlame(ent);
+	});
+}
+
+void DrawSystem()
+{	
+	UpdateAnimProgress();	
 	UpdateDrawPos();
 	DrawClass(SimpleParticleSystemTag{});
+	DrawClass(CBitmapMuzzleFlameTag{});
 };

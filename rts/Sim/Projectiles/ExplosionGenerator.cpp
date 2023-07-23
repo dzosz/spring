@@ -24,6 +24,7 @@
 #include "Rendering/Env/Particles/Classes/WakeProjectile.h"
 #include "Rendering/Env/Particles/Classes/WreckProjectile.h"
 #include "Rendering/Env/Particles/Classes/SimpleParticleSystem.h"
+#include "Rendering/Env/Particles/Classes/BitmapMuzzleFlame.h"
 
 #include "Sim/Projectiles/ProjectileHandler.h"
 #include "Sim/Projectiles/ProjectileMemPool.h"
@@ -971,7 +972,6 @@ bool CCustomExplosionGenerator::Explosion(
 	else {
 		assert(Threading::IsMainThread() || Threading::IsGameLoadThread());
 	}
-	static const int SimpleParticleID = CExpGenSpawnable::GetSpawnableID("CSimpleParticleSystem");
 
 	for (int a = 0; a < spawnInfo.size(); a++) {
 		const ProjectileSpawnInfo& psi = spawnInfo[a];
@@ -983,13 +983,34 @@ bool CCustomExplosionGenerator::Explosion(
 		// no new projectiles if we're saturated
 		if (projectileHandler.GetParticleSaturation() > 1.0f)
 			break;
-
-		for (unsigned int c = 0; c < psi.count; c++) {
-			if (ECS_MODE && psi.spawnableID == SimpleParticleID) {
-				// TODO temporary solution to avoid adding original instance projectile to "projectHandler"
+		
+		auto handleByECS = [&] (int id, unsigned c) {
+			if (!ECS_MODE)
+				return false;
+			static const int SimpleParticleID = CExpGenSpawnable::GetSpawnableID("CSimpleParticleSystem");
+			static const int CBitmapMuzzleFlameID = CExpGenSpawnable::GetSpawnableID("CBitmapMuzzleFlame");
+			if (id == SimpleParticleID) {
 				CSimpleParticleSystem projectile;
 				ExecuteExplosionCode(&psi.code[0], damage, (char*) &projectile, c, dir);
-				projectileHandler.AddSimpleParticleSystem(&projectile, owner, pos);
+				projectile.weapon = 1; // workaround to make the projectile not add to Projectiles
+				projectile.Init(owner, pos);
+				projectile.weapon = 0;
+				projectileHandler.AddSimpleParticleSystem(&projectile);
+				return true;
+			} else if (id == CBitmapMuzzleFlameID) {
+				CBitmapMuzzleFlame projectile;
+				ExecuteExplosionCode(&psi.code[0], damage, (char*) &projectile, c, dir);
+				projectile.weapon = 1; // workaround to make the projectile not add to Projectiles
+				projectile.Init(owner, pos);
+				projectile.weapon = 0;
+				projectileHandler.AddBitmapMuzzleFlame(&projectile);
+				return true;
+			}
+			return false;
+		};
+
+		for (unsigned int c = 0; c < psi.count; c++) {
+			if (handleByECS(psi.spawnableID, c)) {
 				continue;
 			}
 			CExpGenSpawnable* projectile = CExpGenSpawnable::CreateSpawnable(psi.spawnableID);

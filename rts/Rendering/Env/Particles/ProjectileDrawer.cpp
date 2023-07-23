@@ -55,6 +55,7 @@ CProjectileDrawer* projectileDrawer = nullptr;
 #include "lib/entt/entt.hpp"
 #include "Rendering/Env/Particles/ECS.h"
 
+
 extern entt::registry registry; // simple particle system
 
 // can not be a CProjectileDrawer; destruction in global
@@ -326,8 +327,6 @@ void CProjectileDrawer::Init() {
 	}
 	ViewResize();
 	EnableSoften(configHandler->GetInt("SoftParticles"));
-
-	registry.ctx().insert_or_assign(PhysDelta{});
 }
 
 void CProjectileDrawer::Kill() {
@@ -795,8 +794,8 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 		else
 			std::sort(sortedProjectiles.begin(), sortedProjectiles.end(), CProjectileSortingPredicate);
 
-		SCOPED_TIMER("Draw::Projectiles::PDraw");
 		{
+		SCOPED_TIMER("Draw::Projectiles::PDraw");
 		for (auto p : sortedProjectiles) {
 			p->Draw();
 		}
@@ -807,7 +806,7 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 
 		{
 			SCOPED_TIMER("Draw::World::Projectiles::ECS");
-			registry.ctx().get<PhysDelta>().timeSinceLastFrame = globalRendering->timeOffset;
+			registry.ctx().get<PhysDelta>().timeOffset = globalRendering->timeOffset;
 			// TODO implement sorting for ECS particles
 			DrawSystem();
 		}

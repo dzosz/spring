@@ -35,6 +35,8 @@
 #include "lib/entt/entt.hpp"
 #include "Rendering/Env/Particles/ECS.h"
 #include "Rendering/Env/Particles/Classes/SimpleParticleSystem.h"
+#include "Rendering/Env/Particles/Classes/BitmapMuzzleFlame.h"
+
 
 // reserve 5% of maxNanoParticles for important stuff such as capture and reclaim other teams' units
 #define NORMAL_NANO_PRIO 0.95f
@@ -74,36 +76,37 @@ static void updateECSParticles() {
 	// with SimpleParticleSystem
 	// Executing each System on separate thread did not bring any benefit
 	SCOPED_TIMER("Sim::Projectiles::ECS");
-	// const float t = (gs->frameNum - createFrame + globalRendering->timeOffset);
+	registry.ctx().get<PhysDelta>().frameNum = gs->frameNum;
 
-	registry.group<Lifetime, Decayrate>().each([&](auto entity, auto& lifetime, auto& decayrate) { 
+	{		
+		registry.view<Lifetime, const Decayrate>().each([&](auto entity, auto& lifetime, const auto& decayrate) { 
 			if (!LifetimeSystem(lifetime, decayrate)) {
-			//registry.emplace<DeletedEntity>(entity);
-			registry.destroy(entity);
+				// other projectiles can be added by mt Updating legacy projectiles
+				std::unique_lock<spring::mutex> lock(CProjectile::mut);
+				registry.destroy(entity);
 			}
-			});
+		});
+	}
 
-	const float t = (gs->frameNum - globalRendering->timeOffset);
-	//auto t = globalRendering->timeOffset;
-
-	registry.group<AnimProgress, AnimParams>().each([&](auto entity, auto& animProgress, auto& animParams) { 
-			AnimationSystem(animProgress, animParams, t);
-			});
-
-	registry.group<Position, Speed, ParticlePhys>().each([&](auto entity, auto& pos, auto& speed, auto& phys) { 
-			PositionSystem(pos, speed, phys);
-			});
-
-	registry.group<Rotation, RotParams>().each([&](auto entity, auto& rot, auto& rotparams) { 
-			RotationSystem(rot, rotparams, t);
-			});
-
+	registry.view<Position, const Speed>().each([&](auto entity, auto& pos, const auto& speed) { 
+		PositionSystem(pos, speed);
+	});
+	
+	registry.view<Speed, const ParticlePhys>().each([&](auto entity, auto& speed, const auto& phys) { 
+		SpeedParticlePhysSystem(speed, phys);
+	});
+	
+	registry.view<Rotation, RotParams, AnimParams>().each([&](auto entity, auto& rot, auto& rotparams, const auto& animParams) { 		
+		const float t = (gs->frameNum - animParams.createFrame + globalRendering->timeOffset);
+		RotationSystem(rot, rotparams, t);
+	});
+	
+	registry.view<Sized, SizeChange>(entt::exclude<CBitmapMuzzleFlameTag>).each([&](auto ent, auto& size, auto& sizeChange){
+		GrowSizeSystem(size, sizeChange);
+	});
 }
 
-void CProjectileHandler::AddSimpleParticleSystem(CSimpleParticleSystem* proj, CUnit* owner, const float3& pos) {
-	proj->weapon = 1; // workaround to make the projectile not add to Projectiles
-	proj->Init(owner, pos);
-
+void CProjectileHandler::AddSimpleParticleSystem(CSimpleParticleSystem* proj) {
 	const float3 up = proj->emitVector;
 	const float3 right = up.cross(float3(up.y, up.z, -up.x));
 	const float3 forward = up.cross(right);
@@ -124,7 +127,7 @@ void CProjectileHandler::AddSimpleParticleSystem(CSimpleParticleSystem* proj, CU
 		registry.emplace<DrawRadius>(ent, proj->drawRadius);
 		registry.emplace<DrawPosition>(ent, proj->drawPos);
 		registry.emplace<AlliedTeam>(ent, proj->allyteamID); // TODO maybe ignore this check if team is not set?
-		registry.emplace<Position>(ent, pos);
+		registry.emplace<Position>(ent, proj->pos);
 		registry.emplace<Speed>(ent, speed);
 		registry.emplace<Rotation>(ent, rotVal, rotVel);
 		registry.emplace<RotParams>(ent, proj->rotParams);
@@ -133,11 +136,33 @@ void CProjectileHandler::AddSimpleParticleSystem(CSimpleParticleSystem* proj, CU
 		registry.emplace<Sized>(ent, size);
 		registry.emplace<SizeChange>(ent, proj->sizeMod, proj->sizeGrowth);
 		registry.emplace<AnimProgress>(ent, 0.0f);
-		registry.emplace<AnimParams>(ent, proj->animParams);
+		registry.emplace<AnimParams>(ent, proj->animParams, proj->createFrame);
 		registry.emplace<ParticlePhys>(ent, proj->gravity, proj->airdrag);
-		registry.emplace<RenderData>(ent, proj->texture, proj->colorMap, proj->directional);
+		registry.emplace<RenderData>(ent, proj->texture, nullptr, proj->colorMap, proj->directional);
 	}
-	proj->weapon = 0;
+}
+
+void CProjectileHandler::AddBitmapMuzzleFlame(CBitmapMuzzleFlame* proj) {
+	auto ent = registry.create();
+	registry.emplace<CBitmapMuzzleFlameTag>(ent);
+	registry.emplace<FrontOffset>(ent, proj->frontOffset); // BitmapMuzzleFlameSpecific
+	registry.emplace<DrawRadius>(ent, proj->drawRadius);
+	registry.emplace<DrawPosition>(ent, proj->drawPos);
+	registry.emplace<AlliedTeam>(ent, proj->allyteamID); // TODO maybe ignore this check if team is not set?
+	registry.emplace<Position>(ent, proj->pos);
+	registry.emplace<Direction>(ent, proj->dir);
+	//registry.emplace<Speed>(ent, proj->speed);
+	registry.emplace<Rotation>(ent, proj->rotVal, proj->rotVel);
+	registry.emplace<RotParams>(ent, proj->rotParams);
+	registry.emplace<Lifetime>(ent, 0.0f);
+	registry.emplace<Decayrate>(ent, 1.0/proj->ttl);
+	registry.emplace<Sized>(ent, proj->size);
+	registry.emplace<SizeChange>(ent, 1.0, proj->sizeGrowth); // growth done in Draw()
+	registry.emplace<Length>(ent, proj->length);
+	registry.emplace<AnimProgress>(ent, 0.0f);	
+	registry.emplace<AnimParams>(ent, proj->animParams, proj->createFrame);
+	//registry.emplace<ParticlePhys>(ent, 0.0f, 1.0f);
+	registry.emplace<RenderData>(ent, proj->frontTexture, proj->sideTexture, proj->colorMap, false);
 }
 
 void CProjectileHandler::Init()
@@ -168,11 +193,8 @@ void CProjectileHandler::Init()
 	// register ConfigNotify()
 	configHandler->NotifyOnChange(this, {"MaxParticles", "MaxNanoParticles"});
     
-	// ensure group is created?
-	registry.group<AnimProgress, AnimParams>();
-	registry.group<Lifetime, Decayrate>();
-	registry.group<Position, Speed, ParticlePhys>();
-	registry.group<Rotation, RotParams>();
+	registry.ctx().insert_or_assign(PhysDelta{});
+	ConfigNotify({}, {});
 }
 
 void CProjectileHandler::Kill()
