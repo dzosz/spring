@@ -33,7 +33,7 @@
 #include "System/Threading/ThreadPool.h"
 
 #include "lib/entt/entt.hpp"
-#include "Rendering/Env/Particles/ECS.h"
+#include "Rendering/Env/Particles/ECS_systems.h"
 #include "Rendering/Env/Particles/Classes/SimpleParticleSystem.h"
 #include "Rendering/Env/Particles/Classes/BitmapMuzzleFlame.h"
 
@@ -78,30 +78,38 @@ static void updateECSParticles() {
 	SCOPED_TIMER("Sim::Projectiles::Update::ECS");
 	registry.ctx().get<PhysDelta>().frameNum = gs->frameNum;
 
-	{		
-		registry.view<Lifetime, const Decayrate>().each([&](auto entity, auto& lifetime, const auto& decayrate) { 
-			if (!LifetimeSystem(lifetime, decayrate)) {
-				registry.destroy(entity);
-			}
-		});
-	}
+	registry.view<Lifetime, const Decayrate>().each([&](auto entity, auto& lifetime, const auto& decayrate) { 
+		if (!LifetimeSystem(lifetime, decayrate)) {
+			registry.destroy(entity);
+		}
+	});
 
-	registry.view<Position, const Speed>().each([&](auto entity, auto& pos, const auto& speed) { 
-		PositionSystem(pos, speed);
-	});
+	auto b = std::async(std::launch::async, [&]()
+	{
+		registry.view<Position, const Speed>().each([&](auto entity, auto& pos, const auto& speed) { 
+			PositionSystem(pos, speed);
+		});
+
+		registry.view<Speed, const ParticlePhys>().each([&](auto entity, auto& speed, const auto& phys) { 
+			SpeedParticlePhysSystem(speed, phys);
+		});
+	});	
 	
-	registry.view<Speed, const ParticlePhys>().each([&](auto entity, auto& speed, const auto& phys) { 
-		SpeedParticlePhysSystem(speed, phys);
-	});
-	
-	registry.view<Rotation, const RotParams, const AnimParams>().each([&](auto entity, auto& rot, const auto& rotparams, const auto& animParams) {
-		const float t = (gs->frameNum - animParams.createFrame + globalRendering->timeOffset);
-		RotationSystem(rot, rotparams, t);
+	auto d = std::async(std::launch::async, [&]()
+	{
+		registry.view<Rotation, const RotParams, const AnimParams>().each([&](auto entity, auto& rot, const auto& rotparams, const auto& animParams) {
+			const float t = (gs->frameNum - animParams.createFrame + globalRendering->timeOffset);
+			RotationSystem(rot, rotparams, t);
+		});
 	});
 	
 	registry.view<Sized, SizeChange>(entt::exclude<CBitmapMuzzleFlameTag>).each([&](auto ent, auto& size, auto& sizeChange){
 		GrowSizeSystem(size, sizeChange);
 	});
+	
+	b.wait();
+	d.wait();
+	
 }
 
 void CProjectileHandler::AddECSProjectile(CSimpleParticleSystem* proj) {
@@ -340,8 +348,8 @@ void CProjectileHandler::UpdateProjectilesImpl()
 		}
 	}
 	else {
-		//auto ecs_process_future = std::async(std::launch::async, updateECSParticles);
-		auto ecs_process_future = ThreadPool::Enqueue(updateECSParticles);
+		auto ecs_process_future = std::async(std::launch::async, updateECSParticles);
+		//auto ecs_process_future = ThreadPool::Enqueue(updateECSParticles);
 		
 		for_mt_chunk(0, pc.size(), [&pc](int i) {
 			CProjectile* p = pc[i];
@@ -351,7 +359,7 @@ void CProjectileHandler::UpdateProjectilesImpl()
 			p->Update();
 			MAPPOS_SANITY_CHECK(p->pos);
 		});
-		ecs_process_future->wait();
+		ecs_process_future.wait();
 	}
 }
 

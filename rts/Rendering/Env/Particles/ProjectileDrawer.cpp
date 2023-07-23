@@ -53,7 +53,7 @@ static bool CProjectileSortingPredicate(const CProjectile* p1, const CProjectile
 CProjectileDrawer* projectileDrawer = nullptr;
 
 #include "lib/entt/entt.hpp"
-#include "Rendering/Env/Particles/ECS.h"
+#include "Rendering/Env/Particles/ECS_systems.h"
 
 
 extern entt::registry registry; // simple particle system
@@ -771,6 +771,10 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 	sortedProjectiles.clear();
 	unsortedProjectiles.clear();
 
+	registry.ctx().get<PhysDelta>().timeOffset = globalRendering->timeOffset;
+	//auto ecsAnimJob = ThreadPool::Enqueue(UpdateAnimProgressSystem); // TODO why is this slower that Single Threaded?
+	//auto ecsDrawPosJob = ThreadPool::Enqueue(UpdateDrawPosSystem);
+
 	{
 		{
 			ScopedModelDrawerImpl<CUnitDrawer> legacy(true, false);
@@ -806,8 +810,11 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 
 		{
 			SCOPED_TIMER("Draw::World::Projectiles::ECS");
-			registry.ctx().get<PhysDelta>().timeOffset = globalRendering->timeOffset;
 			// TODO implement sorting for ECS particles
+			//ecsAnimJob->wait();
+			//ecsDrawPosJob->wait();
+			UpdateAnimProgressSystem();
+			UpdateDrawPosSystem();
 			DrawSystem();
 		}
 		} // scoped timer

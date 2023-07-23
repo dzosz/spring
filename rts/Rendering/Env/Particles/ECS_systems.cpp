@@ -1,4 +1,4 @@
-#include "ECS.h"
+#include "ECS_systems.h"
 
 #include "Game/Camera.h"
 #include "Game/GlobalUnsynced.h"
@@ -63,8 +63,6 @@ static void DrawSimpleParticleSystem(const Position& pos, const Speed& speed, co
 				  const Lifetime& l, const RenderData& data, const Rotation& rot,
 				  const AnimParams& animParams, const AnimProgress& animProgress)
 {
-	//UpdateAnimParams(); // already done in update phase?
-
 	std::array<float3, 4> bounds;
 	const bool shadowPass = (camera->GetCamType() == CCamera::CAMTYPE_SHADOW);
 	if (data.directional && !shadowPass) {
@@ -154,7 +152,7 @@ static void DrawSimpleParticleSystem(const Position& pos, const Speed& speed, co
 	);
 }
 
-static void UpdateDrawPos()
+void UpdateDrawPosSystem()
 {
 	const float t = registry.ctx().get<PhysDelta>().timeOffset;
 	registry.view<const Position, const Speed, DrawPosition>().each([&](
@@ -167,7 +165,7 @@ static void UpdateDrawPos()
 	});
 }
 
-static void UpdateAnimProgress()
+void UpdateAnimProgressSystem()
 {	
 	registry.view<AnimProgress, AnimParams>().each([&](auto ent, auto& animProgress, auto& animParams) {
 		const float t = (registry.ctx().get<PhysDelta>().frameNum - animParams.createFrame +
@@ -339,8 +337,6 @@ static void DrawClass(CBitmapMuzzleFlameTag)
 void DrawSystem()
 {
 	// FIXME performance issues. maybe add entt::observer and check visibility first?
-	UpdateAnimProgress();	
-	UpdateDrawPos();
 	DrawClass(SimpleParticleSystemTag{});
 	DrawClass(CBitmapMuzzleFlameTag{});
 };
