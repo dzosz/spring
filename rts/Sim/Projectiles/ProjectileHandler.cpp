@@ -72,9 +72,7 @@ CProjectileHandler projectileHandler;
 entt::registry registry;
 
 static void updateECSParticles() {
-	// TODO for some reason this approach turned out to be slower even when the game is overwhelmed
-	// with SimpleParticleSystem
-	// Executing each System on separate thread did not bring any benefit
+	// FIXME we can't execute on threadpool until we move all legacy projectiles into ECS
 	SCOPED_TIMER("Sim::Projectiles::Update::ECS");
 	registry.ctx().get<PhysDelta>().frameNum = gs->frameNum;
 
