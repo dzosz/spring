@@ -81,8 +81,6 @@ static void updateECSParticles() {
 	{		
 		registry.view<Lifetime, const Decayrate>().each([&](auto entity, auto& lifetime, const auto& decayrate) { 
 			if (!LifetimeSystem(lifetime, decayrate)) {
-				// other projectiles can be added by mt Updating legacy projectiles
-				std::unique_lock<spring::mutex> lock(CProjectile::mut);
 				registry.destroy(entity);
 			}
 		});
@@ -106,7 +104,7 @@ static void updateECSParticles() {
 	});
 }
 
-void CProjectileHandler::AddSimpleParticleSystem(CSimpleParticleSystem* proj) {
+void CProjectileHandler::AddECSProjectile(CSimpleParticleSystem* proj) {
 	const float3 up = proj->emitVector;
 	const float3 right = up.cross(float3(up.y, up.z, -up.x));
 	const float3 forward = up.cross(right);
@@ -140,9 +138,11 @@ void CProjectileHandler::AddSimpleParticleSystem(CSimpleParticleSystem* proj) {
 		registry.emplace<ParticlePhys>(ent, proj->gravity, proj->airdrag);
 		registry.emplace<RenderData>(ent, proj->texture, nullptr, proj->colorMap, proj->directional);
 	}
+	
+	projMemPool.free(proj);
 }
 
-void CProjectileHandler::AddBitmapMuzzleFlame(CBitmapMuzzleFlame* proj) {
+void CProjectileHandler::AddECSProjectile(CBitmapMuzzleFlame* proj) {
 	auto ent = registry.create();
 	registry.emplace<CBitmapMuzzleFlameTag>(ent);
 	registry.emplace<FrontOffset>(ent, proj->frontOffset); // BitmapMuzzleFlameSpecific
@@ -163,6 +163,39 @@ void CProjectileHandler::AddBitmapMuzzleFlame(CBitmapMuzzleFlame* proj) {
 	registry.emplace<AnimParams>(ent, proj->animParams, proj->createFrame);
 	//registry.emplace<ParticlePhys>(ent, 0.0f, 1.0f);
 	registry.emplace<RenderData>(ent, proj->frontTexture, proj->sideTexture, proj->colorMap, false);
+	
+	projMemPool.free(proj);
+}
+
+static std::vector<CProjectile*> queuedProjectiles; 
+
+// COMMENT this approach can already be merged to master as it provides safety to projectiles container
+// and avoids duplicated iteration over projectiles[synced] containers
+void CProjectileHandler::AddNewProjectileToQueue(CProjectile* proj) {
+	// called multithreaded context
+	// already locks Projectile::mut
+	queuedProjectiles.push_back(proj);
+}
+
+void CProjectileHandler::DrainNewProjectileQueue() {
+	for (auto* proj : queuedProjectiles) {
+		if (!proj->ECS) {
+			// legacy projectiles won't be here
+			throw 333;
+		}
+		auto ptr = dynamic_cast<CSimpleParticleSystem*>(proj);
+		if (ptr) {
+			AddECSProjectile(ptr);				
+		} else {
+			auto ptr2 = dynamic_cast<CBitmapMuzzleFlame*>(proj);
+			if (!ptr2) {
+				LOG("ERR unhandled ECS projectile");
+				throw 420;
+			}
+			AddECSProjectile(ptr2);
+		}
+	}
+	queuedProjectiles.clear();
 }
 
 void CProjectileHandler::Init()
@@ -289,6 +322,8 @@ void CProjectileHandler::UpdateProjectilesImpl()
 		// neither
 		++i;
 	}
+	
+	DrainNewProjectileQueue();
 
 	// WARNING: same as above but for p->Update()
 	if constexpr (synced) {

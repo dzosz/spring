@@ -984,37 +984,33 @@ bool CCustomExplosionGenerator::Explosion(
 		if (projectileHandler.GetParticleSaturation() > 1.0f)
 			break;
 		
-		auto handleByECS = [&] (int id, unsigned c) {
+		auto handleByECS = [&] (CExpGenSpawnable* p, int id, unsigned c) {
 			if (!ECS_MODE)
 				return false;
 			static const int SimpleParticleID = CExpGenSpawnable::GetSpawnableID("CSimpleParticleSystem");
 			static const int CBitmapMuzzleFlameID = CExpGenSpawnable::GetSpawnableID("CBitmapMuzzleFlame");
-			if (id == SimpleParticleID) {
-				CSimpleParticleSystem projectile;
-				ExecuteExplosionCode(&psi.code[0], damage, (char*) &projectile, c, dir);
-				projectile.weapon = 1; // workaround to make the projectile not add to Projectiles
-				projectile.Init(owner, pos);
-				projectile.weapon = 0;
-				projectileHandler.AddSimpleParticleSystem(&projectile);
+			if (id == SimpleParticleID || id == CBitmapMuzzleFlameID) {
+				auto* proj = static_cast<CSimpleParticleSystem*>(p);
+				proj->ECS = 1; // workaround to make the projectile not add to projHandler in Init()
+				proj->Init(owner, pos);
+				projectileHandler.AddECSProjectile(proj, withMutex);
 				return true;
 			} else if (id == CBitmapMuzzleFlameID) {
-				CBitmapMuzzleFlame projectile;
-				ExecuteExplosionCode(&psi.code[0], damage, (char*) &projectile, c, dir);
-				projectile.weapon = 1; // workaround to make the projectile not add to Projectiles
-				projectile.Init(owner, pos);
-				projectile.weapon = 0;
-				projectileHandler.AddBitmapMuzzleFlame(&projectile);
+				auto* proj = static_cast<CBitmapMuzzleFlame*>(p);
+				proj->ECS = 1; // workaround to make the projectile not add to projHandler in Init()
+				proj->Init(owner, pos);
+				projectileHandler.AddECSProjectile(proj, withMutex);
 				return true;
 			}
 			return false;
 		};
 
 		for (unsigned int c = 0; c < psi.count; c++) {
-			if (handleByECS(psi.spawnableID, c)) {
-				continue;
-			}
 			CExpGenSpawnable* projectile = CExpGenSpawnable::CreateSpawnable(psi.spawnableID);
 			ExecuteExplosionCode(&psi.code[0], damage, (char*) projectile, c, dir);
+			if (handleByECS(projectile, psi.spawnableID, c)) {
+				continue;
+			}
 			projectile->Init(owner, pos);
 		}
 	}

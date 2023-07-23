@@ -80,8 +80,19 @@ public:
 	);
 	void AddNanoParticle(const float3, const float3, const UnitDef*, int team, bool highPriority);
 	void AddNanoParticle(const float3, const float3, const UnitDef*, int team, float radius, bool inverse, bool highPriority);
-	void AddSimpleParticleSystem(CSimpleParticleSystem* proj);
-	void AddBitmapMuzzleFlame(CBitmapMuzzleFlame* proj);
+	
+	template <typename T>
+	void AddECSProjectile(T* proj, bool withMutex) {
+		if (withMutex) {
+			AddNewProjectileToQueue(proj);
+		} else {
+			AddECSProjectile(proj);
+		}
+	}
+	void AddNewProjectileToQueue(CProjectile* proj);
+	void DrainNewProjectileQueue();
+	void AddECSProjectile(CSimpleParticleSystem* proj);
+	void AddECSProjectile(CBitmapMuzzleFlame* proj);
 
 public:
 	int maxParticles = 0;
