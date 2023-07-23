@@ -113,33 +113,21 @@ static void updateECSParticles() {
 }
 
 void CProjectileHandler::AddECSProjectile(CSimpleParticleSystem* proj) {
-	const float3 up = proj->emitVector;
-	const float3 right = up.cross(float3(up.y, up.z, -up.x));
-	const float3 forward = up.cross(right);
-
 	for (int i=0; i< proj->GetProjectilesCount(); ++i)
-	{		
-		float az = guRNG.NextFloat() * math::TWOPI;
-		float ay = (proj->emitRot + (proj->emitRotSpread * guRNG.NextFloat())) * math::DEG_TO_RAD;
-
-		float4 speed = ((up * proj->emitMul.y) * fastmath::cos(ay) - ((right * proj->emitMul.x) * fastmath::cos(az) - (forward * proj->emitMul.z) * fastmath::sin(az)) * fastmath::sin(ay)) * (proj->particleSpeed + (guRNG.NextFloat() * proj->particleSpeedSpread));
-		auto rotVal = proj->rotParams.z; //initial rotation value
-		auto rotVel = proj->rotParams.x; //initial rotation velocity
-		float decayrate = 1.0f / (proj->particleLife + (guRNG.NextFloat() * proj->particleLifeSpread));
-		float size = proj->particleSize + guRNG.NextFloat()*proj->particleSizeSpread;
-
+	{
+		auto& particles = proj->particles;
 		auto ent = registry.create();
 		registry.emplace<SimpleParticleSystemTag>(ent);
 		registry.emplace<DrawRadius>(ent, proj->drawRadius);
 		registry.emplace<DrawPosition>(ent, proj->drawPos);
 		registry.emplace<AlliedTeam>(ent, proj->allyteamID); // TODO maybe ignore this check if team is not set?
-		registry.emplace<Position>(ent, proj->pos);
-		registry.emplace<Speed>(ent, speed);
-		registry.emplace<Rotation>(ent, rotVal, rotVel);
+		registry.emplace<Position>(ent, particles[i].pos);
+		registry.emplace<Speed>(ent, particles[i].speed);
+		registry.emplace<Rotation>(ent, particles[i].rotVal, particles[i].rotVel);
 		registry.emplace<RotParams>(ent, proj->rotParams);
 		registry.emplace<Lifetime>(ent, 0.0f);
-		registry.emplace<Decayrate>(ent, decayrate);
-		registry.emplace<Sized>(ent, size);
+		registry.emplace<Decayrate>(ent, particles[i].decayrate);
+		registry.emplace<Sized>(ent, particles[i].size);
 		registry.emplace<SizeChange>(ent, proj->sizeMod, proj->sizeGrowth);
 		registry.emplace<AnimProgress>(ent, 0.0f);
 		registry.emplace<AnimParams>(ent, proj->animParams, proj->createFrame);
