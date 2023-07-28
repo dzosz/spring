@@ -9,12 +9,12 @@ inline void GrowSizeSystem(Sized& s, const SizeChange& change) {
 
 inline bool LifetimeSystem(Lifetime& l, const Decayrate& d) {
 	l.value += d.value;
-	return l.value < 1.0;
+	return l.value >= 1.0;
 }
 
 inline bool LifetimeAlphaSystem(Alpha& l, const AlphaDecayrate& d) {
 	l.v -= d.v;
-	return l.v > 0.0;
+	return l.v <= 0.0;
 }
 
 bool LifetimePositionAboveGroundSystem(const Position&);

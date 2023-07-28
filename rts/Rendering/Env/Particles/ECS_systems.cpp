@@ -85,22 +85,18 @@ static bool IsValidTexture(const AtlasedTexture* tex)
 	return tex && tex != &CTextureAtlas::dummy;
 }
 
-static void DrawSimpleParticleSystem(const Position& pos, const Speed& speed, const Sized& sized,
+static void DrawSimpleParticleSystem(const DrawPosition& drawPos, const Speed& speed, const Sized& sized,
 				  const Lifetime& l, const RenderData& data, const Rotation& rot,
 				  const AnimParams& animParams, const AnimProgress& animProgress)
 {
 	std::array<float3, 4> bounds;
 	const bool shadowPass = (camera->GetCamType() == CCamera::CAMTYPE_SHADOW);
 	if (data.directional && !shadowPass) {
-
-		if (l.value >= 1.0f)
-			return;
-
-		const float3 zdir = (pos.value - camera->GetPos()).SafeANormalize();
+		const float3 zdir = (drawPos.value - camera->GetPos()).SafeANormalize();
 			  float3 ydir = zdir.cross(speed.value); float yDirLen2 = ydir.SqLength(); ydir.SafeANormalize();
 		const float3 xdir = ydir.cross(zdir);
 
-		const float3 interPos = pos.value + speed.value * globalRendering->timeOffset;
+		const float3 interPos = drawPos.value;
 		const float size = sized.value;
 
 		unsigned char color[4];
@@ -145,14 +141,10 @@ static void DrawSimpleParticleSystem(const Position& pos, const Speed& speed, co
 		return;
 	}
 
-	// !directional
-	if (l.value >= 1.0f)
-		return;
-
 	unsigned char color[4];
 	data.colorMap->GetColor(color, l.value);
 
-	const float3 interPos = pos.value + speed.value * globalRendering->timeOffset;
+	const float3 interPos = drawPos.value;
 	const float3 cameraRight = camera->GetRight() * sized.value;
 	const float3 cameraUp    = camera->GetUp()    * sized.value;
 
@@ -214,7 +206,7 @@ void UpdateAnimProgressSystem()
 }
 
 bool LifetimePositionAboveGroundSystem(const Position& pos) {
-	return (CGround::GetApproximateHeight(pos.value.x, pos.value.z, false) - 40.0f <= pos.value.y);
+	return (CGround::GetApproximateHeight(pos.value.x, pos.value.z, false) - 40.0f > pos.value.y);
 }
 
 static bool CanDrawProjectile(const Position& pos, const AlliedTeam& allyTeam)
@@ -255,7 +247,7 @@ static void DrawClass(SimpleParticleSystemTag)
 				const Rotation& rot, const AnimParams& animParams, const AnimProgress& animProgress) {	
 		if (!isParticleVisible(pos, drawPos, drawRadius, allyteam)) 
 			return;
-		DrawSimpleParticleSystem(pos, speed, sized,
+		DrawSimpleParticleSystem(drawPos, speed, sized,
 								lifetime, renderData, rot,
 								animParams, animProgress);
 	});

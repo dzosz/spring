@@ -85,7 +85,7 @@ static void updateECSParticles() {
 
 	{ // lifetime updates
 		registry.view<Lifetime, const Decayrate>().each([&](auto entity, auto& lifetime, const auto& decayrate) { 
-			if (!LifetimeSystem(lifetime, decayrate)) {
+			if (LifetimeSystem(lifetime, decayrate)) {
 				registry.emplace<Destroyed>(entity);
 				//registry.destroy(entity);
 			}
@@ -93,13 +93,13 @@ static void updateECSParticles() {
 		
 		// TODO is looping over a tag good performance?
 		registry.view<GroundCollisionTag, Position>().each([&](auto entity, auto& position) { 
-			if (!LifetimePositionAboveGroundSystem(position)) {
+			if (LifetimePositionAboveGroundSystem(position)) {
 				registry.emplace<Destroyed>(entity);
 			}
 		});
 		
 		registry.view<Alpha, AlphaDecayrate>().each([&](auto entity, auto& alpha, const auto& decayrate) { 
-			if (!LifetimeAlphaSystem(alpha, decayrate)) {
+			if (LifetimeAlphaSystem(alpha, decayrate)) {
 				registry.emplace<Destroyed>(entity);
 			}
 		});
