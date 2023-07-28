@@ -113,8 +113,6 @@ void CProjectile::Init(const CUnit* owner, const float3& offset)
 	}
 
 	CExpGenSpawnable::Init(owner, offset);
-	if (ECS)
-		return; // do not add to projectileHandler
 
 	// NOTE:
 	//   new CWeapon- and CPieceProjectile*'s add themselves

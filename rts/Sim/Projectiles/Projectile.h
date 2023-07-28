@@ -148,7 +148,6 @@ public:
 
 	//static TypedRenderBuffer<VA_TYPE_C >& GetAnimationRenderBuffer();
 	std::vector<int> quads;
-	bool ECS=false; // enabled for ECSed projectiles
 };
 
 #endif /* PROJECTILE_H */

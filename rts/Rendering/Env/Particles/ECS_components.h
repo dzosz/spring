@@ -46,6 +46,14 @@ struct Decayrate {
 	float value;
 };
 
+struct Alpha {
+	float v;
+};
+
+struct AlphaDecayrate {
+	float v;
+};
+
 struct AnimProgress {
 	float value;
 };
@@ -92,6 +100,14 @@ struct RenderData {
 	bool directional;
 };
 
+struct Color {
+	float3 v;
+};
+
 // Drawable tags
 struct SimpleParticleSystemTag {};
 struct CBitmapMuzzleFlameTag {};
+struct CDirtProjectileTag {};
+
+// System behavior Tags
+struct GroundCollisionTag {};

@@ -23,6 +23,7 @@ class CGroundFlash;
 struct UnitDef;
 struct CSimpleParticleSystem;
 struct CBitmapMuzzleFlame;
+struct CDirtProjectile;
 
 typedef std::vector<CGroundFlash*> GroundFlashContainer;
 typedef std::vector<FlyingPiece> FlyingPieceContainer;
@@ -80,19 +81,12 @@ public:
 	);
 	void AddNanoParticle(const float3, const float3, const UnitDef*, int team, bool highPriority);
 	void AddNanoParticle(const float3, const float3, const UnitDef*, int team, float radius, bool inverse, bool highPriority);
-	
-	template <typename T>
-	void AddECSProjectile(T* proj, bool withMutex) {
-		if (withMutex) {
-			AddNewProjectileToQueue(proj);
-		} else {
-			AddECSProjectile(proj);
-		}
-	}
-	void AddNewProjectileToQueue(CProjectile* proj);
-	void DrainNewProjectileQueue();
+
+	void AddUnsyncedParticleToQueue(CProjectile* proj);
+	void DrainUnsyncedProjectileQueue();
 	void AddECSProjectile(CSimpleParticleSystem* proj);
 	void AddECSProjectile(CBitmapMuzzleFlame* proj);
+	void AddECSProjectile(CDirtProjectile* proj);
 
 public:
 	int maxParticles = 0;

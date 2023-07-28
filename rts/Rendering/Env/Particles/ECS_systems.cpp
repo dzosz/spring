@@ -47,7 +47,7 @@ To do:
 
 #include "lib/entt/entt.hpp"
 extern entt::registry registry;
-
+namespace {
 static TypedRenderBuffer<VA_TYPE_PROJ>& GetPrimaryRenderBuffer()
 {
 	return RenderBuffer::GetTypedRenderBuffer<VA_TYPE_PROJ>();
@@ -178,6 +178,8 @@ static void DrawSimpleParticleSystem(const Position& pos, const Speed& speed, co
 	);
 }
 
+} // unnamed namespace
+
 void UpdateDrawPosSystem()
 {
 	const float t = registry.ctx().get<PhysDelta>().timeOffset;
@@ -192,7 +194,7 @@ void UpdateDrawPosSystem()
 }
 
 void UpdateAnimProgressSystem()
-{	
+{
 	registry.view<AnimProgress, AnimParams>().each([&](auto ent, auto& animProgress, auto& animParams) {
 		const float t = (registry.ctx().get<PhysDelta>().frameNum - animParams.createFrame +
 						 registry.ctx().get<PhysDelta>().timeOffset);
@@ -209,6 +211,10 @@ void UpdateAnimProgressSystem()
 			animProgress.value = math::fmod(t, animSpeed) / animSpeed;
 		}
 	});
+}
+
+bool LifetimePositionAboveGroundSystem(const Position& pos) {
+	return (CGround::GetApproximateHeight(pos.value.x, pos.value.z, false) - 40.0f <= pos.value.y);
 }
 
 static bool CanDrawProjectile(const Position& pos, const AlliedTeam& allyTeam)
@@ -353,16 +359,78 @@ static void DrawClass(CBitmapMuzzleFlameTag)
 		auto& drawPos = view.get<DrawPosition>(ent);
 		auto& drawRadius = view.get<DrawRadius>(ent);
 		auto& allyteam = view.get<AlliedTeam>(ent);
-		if (!isParticleVisible(pos, drawPos, drawRadius, allyteam)) {
+		if (!isParticleVisible(pos, drawPos, drawRadius, allyteam))
 			continue;
-		}
+
 		DrawCBitmapMuzzleFlame(ent, view);
+	};
+}
+
+template <typename ViewT>
+static void DrawCDirtProjectile(entt::entity ent, ViewT&& view) 
+{
+	auto& pos = view.template get<const Position>(ent).value;
+	auto& size = view.template get<const Sized>(ent).value;
+	auto& sizeExpansion = view.template get<const SizeChange>(ent).sizeGrowth;
+	auto& color = view.template get<const Color>(ent).v;
+	auto& alpha = view.template get<const Alpha>(ent).v;
+	auto& texture = view.template get<const RenderData>(ent).texture;
+	auto& drawPos = view.template get<const DrawPosition>(ent).value;
+	auto& animParams = view.template get<const AnimParams>(ent);
+	auto& animProgress = view.template get<const AnimProgress>(ent);
+			
+	float3 animInfo = { animParams.value.x, animParams.value.y, animProgress.value };
+	float partAbove = (pos.y / (size * camera->GetUp().y));
+
+	if (partAbove < -1.0f)
+		return;
+
+	partAbove = std::min(partAbove, 1.0f);
+	LOG("DrawCDirtProjectile()");
+
+	unsigned char col[4];
+	col[0] = (unsigned char) (color.x * alpha);
+	col[1] = (unsigned char) (color.y * alpha);
+	col[2] = (unsigned char) (color.z * alpha);
+	col[3] = (unsigned char) (alpha)/*- (globalRendering->timeOffset * alphaFalloff)*/;
+
+	const float interSize = size + globalRendering->timeOffset * sizeExpansion;
+	const float texx = texture->xstart + (texture->xend - texture->xstart) * ((1.0f - partAbove) * 0.5f);
+
+	AddEffectsQuad(
+		{ drawPos - camera->GetRight() * interSize - camera->GetUp() * interSize * partAbove, texx,          texture->ystart, col },
+		{ drawPos - camera->GetRight() * interSize + camera->GetUp() * interSize,             texture->xend, texture->ystart, col },
+		{ drawPos + camera->GetRight() * interSize + camera->GetUp() * interSize,             texture->xend, texture->yend,   col },
+		{ drawPos + camera->GetRight() * interSize - camera->GetUp() * interSize * partAbove, texx,          texture->yend,   col },
+		animInfo
+	);
+}
+
+void DrawClass(CDirtProjectileTag)
+{
+	auto view = registry.view<CDirtProjectileTag, const Position, const DrawPosition, const DrawRadius, const AlliedTeam,
+			const SizeChange, const Sized, const RenderData, const Color, const Alpha,
+			const AnimParams, const AnimProgress
+			>();
+	for (auto ent : view) {
+		auto& pos = view.get<Position>(ent);
+		auto& drawPos = view.get<DrawPosition>(ent);
+		auto& drawRadius = view.get<DrawRadius>(ent);
+		auto& allyteam = view.get<AlliedTeam>(ent);
+		if (!isParticleVisible(pos, drawPos, drawRadius, allyteam))
+			continue;
+		DrawCDirtProjectile(ent, view);
 	};
 }
 
 void DrawSystem()
 {
+	registry.view<Rotation, const RotParams, const AnimParams>().each([&](auto ent, auto& rot, const auto& rotparams, const auto& animParams) {
+		const float t = (registry.ctx().get<PhysDelta>().frameNum - animParams.createFrame + registry.ctx().get<PhysDelta>().timeOffset);
+		RotationSystem(rot, rotparams, t);
+	});
 	// FIXME performance issues. maybe add entt::observer and check visibility first?
 	DrawClass(SimpleParticleSystemTag{});
 	DrawClass(CBitmapMuzzleFlameTag{});
+	DrawClass(CDirtProjectileTag{});
 };

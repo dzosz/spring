@@ -9,6 +9,7 @@ struct AtlasedTexture;
 
 class CDirtProjectile : public CProjectile
 {
+	friend class CProjectileHandler;
 	CR_DECLARE_DERIVED(CDirtProjectile)
 public:
 	CDirtProjectile();

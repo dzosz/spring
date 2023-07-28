@@ -36,7 +36,8 @@
 #include "Rendering/Env/Particles/ECS_systems.h"
 #include "Rendering/Env/Particles/Classes/SimpleParticleSystem.h"
 #include "Rendering/Env/Particles/Classes/BitmapMuzzleFlame.h"
-
+#include "Rendering/Env/Particles/Classes/DirtProjectile.h"
+#include <typeindex>
 
 // reserve 5% of maxNanoParticles for important stuff such as capture and reclaim other teams' units
 #define NORMAL_NANO_PRIO 0.95f
@@ -70,20 +71,45 @@ ProjMemPool projMemPool;
 CProjectileHandler projectileHandler;
 
 entt::registry registry;
+static std::vector<CProjectile*> queuedProjectiles; 
+static std::unordered_map<std::type_index, std::function<void(CProjectile*)>> ecsSpawner;
+
+namespace {
+	struct Destroyed {};
+}
 
 static void updateECSParticles() {
 	// FIXME we can't execute on threadpool until we move all legacy projectiles into ECS
 	SCOPED_TIMER("Sim::Projectiles::Update::ECS");
 	registry.ctx().get<PhysDelta>().frameNum = gs->frameNum;
 
-	registry.view<Lifetime, const Decayrate>().each([&](auto entity, auto& lifetime, const auto& decayrate) { 
-		if (!LifetimeSystem(lifetime, decayrate)) {
-			registry.destroy(entity);
-		}
-	});
+	{ // lifetime updates
+		registry.view<Lifetime, const Decayrate>().each([&](auto entity, auto& lifetime, const auto& decayrate) { 
+			if (!LifetimeSystem(lifetime, decayrate)) {
+				registry.emplace<Destroyed>(entity);
+				//registry.destroy(entity);
+			}
+		});	
+		
+		// TODO is looping over a tag good performance?
+		registry.view<GroundCollisionTag, Position>().each([&](auto entity, auto& position) { 
+			if (!LifetimePositionAboveGroundSystem(position)) {
+				registry.emplace<Destroyed>(entity);
+			}
+		});
+		
+		registry.view<Alpha, AlphaDecayrate>().each([&](auto entity, auto& alpha, const auto& decayrate) { 
+			if (!LifetimeAlphaSystem(alpha, decayrate)) {
+				registry.emplace<Destroyed>(entity);
+			}
+		});
+	}
+			
+	auto d = registry.view<Destroyed>();
+	registry.destroy(d.begin(), d.end());
 
-	auto b = std::async(std::launch::async, [&]()
-	{
+	//auto b = std::async(std::launch::async, [&]()
+	{ // position updates
 		registry.view<Position, const Speed>().each([&](auto entity, auto& pos, const auto& speed) { 
 			PositionSystem(pos, speed);
 		});
@@ -91,22 +117,26 @@ static void updateECSParticles() {
 		registry.view<Speed, const ParticlePhys>().each([&](auto entity, auto& speed, const auto& phys) { 
 			SpeedParticlePhysSystem(speed, phys);
 		});
-	});	
+	}
+	//);	
 	
-	auto d = std::async(std::launch::async, [&]()
+	//auto d = std::async(std::launch::async, [&]()
 	{
+		/*
 		registry.view<Rotation, const RotParams, const AnimParams>().each([&](auto entity, auto& rot, const auto& rotparams, const auto& animParams) {
 			const float t = (gs->frameNum - animParams.createFrame + globalRendering->timeOffset);
 			RotationSystem(rot, rotparams, t);
 		});
-	});
+		*/
+	}
+	//);
 	
 	registry.view<Sized, SizeChange>(entt::exclude<CBitmapMuzzleFlameTag>).each([&](auto ent, auto& size, auto& sizeChange){
 		GrowSizeSystem(size, sizeChange);
 	});
 	
-	b.wait();
-	d.wait();
+	//b.wait();
+	//d.wait();
 	
 }
 
@@ -132,8 +162,6 @@ void CProjectileHandler::AddECSProjectile(CSimpleParticleSystem* proj) {
 		registry.emplace<ParticlePhys>(ent, proj->gravity, proj->airdrag);
 		registry.emplace<RenderData>(ent, proj->texture, nullptr, proj->colorMap, proj->directional);
 	}
-	
-	projMemPool.free(proj);
 }
 
 void CProjectileHandler::AddECSProjectile(CBitmapMuzzleFlame* proj) {
@@ -157,37 +185,49 @@ void CProjectileHandler::AddECSProjectile(CBitmapMuzzleFlame* proj) {
 	registry.emplace<AnimParams>(ent, proj->animParams, proj->createFrame);
 	//registry.emplace<ParticlePhys>(ent, 0.0f, 1.0f);
 	registry.emplace<RenderData>(ent, proj->frontTexture, proj->sideTexture, proj->colorMap, false);
-
-	projMemPool.free(proj);
 }
 
-static std::vector<CProjectile*> queuedProjectiles; 
+void CProjectileHandler::AddECSProjectile(CDirtProjectile* proj) {
+	auto ent = registry.create();
+	registry.emplace<CDirtProjectileTag>(ent);	
+	registry.emplace<GroundCollisionTag>(ent);
+
+	registry.emplace<DrawRadius>(ent, proj->drawRadius);
+	registry.emplace<DrawPosition>(ent, proj->drawPos);
+	registry.emplace<AlliedTeam>(ent, proj->allyteamID);
+	registry.emplace<Position>(ent, proj->pos);
+	registry.emplace<Speed>(ent, proj->speed);
+	registry.emplace<Alpha>(ent, proj->alpha);
+	registry.emplace<AlphaDecayrate>(ent, proj->alphaFalloff);
+	registry.emplace<Sized>(ent, proj->size);
+	registry.emplace<SizeChange>(ent, 1.0, proj->sizeExpansion);
+	registry.emplace<AnimProgress>(ent, 0.0f);
+	registry.emplace<AnimParams>(ent, proj->animParams, proj->createFrame);
+	registry.emplace<ParticlePhys>(ent, float3{0.0f, proj->mygravity, 0.0f}, proj->slowdown);
+	registry.emplace<RenderData>(ent, proj->texture, nullptr, nullptr, false);
+	registry.emplace<Color>(ent, proj->color);
+}
 
 // COMMENT this approach can already be merged to master as it provides safety to projectiles container.
 // It avoids duplicated iteration over projectiles[synced] containers
 // and gives control when exactly to Update() new particles
-void CProjectileHandler::AddNewProjectileToQueue(CProjectile* proj) {
-	// called from multithreaded context, already locks Projectile::mut
+void CProjectileHandler::AddUnsyncedParticleToQueue(CProjectile* proj) {
+	// called from st or multithreaded context, already locks Projectile::mut
 	queuedProjectiles.push_back(proj);
 }
 
-void CProjectileHandler::DrainNewProjectileQueue() {
-	for (auto* proj : queuedProjectiles) {
-		if (!proj->ECS) {
-			// legacy projectiles aren't here
-			throw 333;
+void CProjectileHandler::DrainUnsyncedProjectileQueue() {
+	for (auto* p : queuedProjectiles) {
+		auto type_idx = std::type_index(typeid(*p));
+		auto it = ecsSpawner.find(type_idx);
+		if (it == ecsSpawner.end()) {
+			// legacy unsynced projectile path
+			p->id = static_cast<int>(projectiles[false].Add(p));	
+			CreateProjectile(p);
+			continue;
 		}
-		auto ptr = dynamic_cast<CSimpleParticleSystem*>(proj);
-		if (ptr) {
-			AddECSProjectile(ptr);				
-		} else {
-			auto ptr2 = dynamic_cast<CBitmapMuzzleFlame*>(proj);
-			if (!ptr2) {
-				LOG("ERR unhandled ECS projectile");
-				throw 420;
-			}
-			AddECSProjectile(ptr2);
-		}
+		it->second(p);
+		projMemPool.free(p);
 	}
 	queuedProjectiles.clear();
 }
@@ -222,6 +262,16 @@ void CProjectileHandler::Init()
     
 	registry.ctx().insert_or_assign(PhysDelta{});
 	ConfigNotify({}, {});
+	
+	ecsSpawner[std::type_index(typeid(CSimpleParticleSystem))] = [&](CProjectile* p) {
+		AddECSProjectile(static_cast<CSimpleParticleSystem*>(p));
+	};
+	ecsSpawner[std::type_index(typeid(CBitmapMuzzleFlame))] = [&](CProjectile* p) {
+		AddECSProjectile(static_cast<CBitmapMuzzleFlame*>(p));
+	};
+	ecsSpawner[std::type_index(typeid(CDirtProjectile))] = [&](CProjectile* p) {
+		AddECSProjectile(static_cast<CDirtProjectile*>(p));
+	};
 }
 
 void CProjectileHandler::Kill()
@@ -317,7 +367,7 @@ void CProjectileHandler::UpdateProjectilesImpl()
 		++i;
 	}
 	
-	DrainNewProjectileQueue();
+	DrainUnsyncedProjectileQueue();
 
 	// WARNING: same as above but for p->Update()
 	if constexpr (synced) {
@@ -334,18 +384,23 @@ void CProjectileHandler::UpdateProjectilesImpl()
 		}
 	}
 	else {
-		auto ecs_process_future = std::async(std::launch::async, updateECSParticles);
+		//auto ecs_process_future = std::async(std::launch::async, updateECSParticles);
 		//auto ecs_process_future = ThreadPool::Enqueue(updateECSParticles);
 		
-		for_mt_chunk(0, pc.size(), [&pc](int i) {
+		updateECSParticles();
+		
+		size_t s = pc.size();
+		for(size_t i =0; i < s; ++i) {
+		//for_mt_chunk(0, pc.size(), [&pc](int i) {	
 			CProjectile* p = pc[i];
 			assert(p != nullptr);
 
 			MAPPOS_SANITY_CHECK(p->pos);
 			p->Update();
 			MAPPOS_SANITY_CHECK(p->pos);
-		});
-		ecs_process_future.wait();
+		}
+		//;
+		//ecs_process_future.wait();
 	}
 }
 
@@ -487,6 +542,11 @@ void CProjectileHandler::AddProjectile(CProjectile* p)
 	// already initialized?
 	assert(p->id < 0);
 	assert(p->createMe);
+
+	if (!p->synced && ECS_MODE) {
+		AddUnsyncedParticleToQueue(p);
+		return;
+	}
 
 	if (p->synced)
 		p->id = static_cast<int>(projectiles[true ].Add(p, rngFuncs[true]));

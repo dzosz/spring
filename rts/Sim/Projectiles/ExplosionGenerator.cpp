@@ -23,8 +23,6 @@
 #include "Rendering/Env/Particles/Classes/SpherePartProjectile.h"
 #include "Rendering/Env/Particles/Classes/WakeProjectile.h"
 #include "Rendering/Env/Particles/Classes/WreckProjectile.h"
-#include "Rendering/Env/Particles/Classes/SimpleParticleSystem.h"
-#include "Rendering/Env/Particles/Classes/BitmapMuzzleFlame.h"
 
 #include "Sim/Projectiles/ProjectileHandler.h"
 #include "Sim/Projectiles/ProjectileMemPool.h"
@@ -52,7 +50,6 @@ static constexpr size_t CEG_PREFIX_STRLEN = sizeof(CEG_PREFIX_STRING) - 1;
 CExplosionGeneratorHandler explGenHandler;
 
 
-extern bool ECS_MODE; // runtime switch for new ECS mode
 
 unsigned int CCustomExplosionGenerator::GetFlagsFromTable(const LuaTable& table)
 {
@@ -983,34 +980,10 @@ bool CCustomExplosionGenerator::Explosion(
 		// no new projectiles if we're saturated
 		if (projectileHandler.GetParticleSaturation() > 1.0f)
 			break;
-		
-		auto handleByECS = [&] (CExpGenSpawnable* p, int id, unsigned c) {
-			if (!ECS_MODE)
-				return false;
-			static const int SimpleParticleID = CExpGenSpawnable::GetSpawnableID("CSimpleParticleSystem");
-			static const int CBitmapMuzzleFlameID = CExpGenSpawnable::GetSpawnableID("CBitmapMuzzleFlame");
-			if (id == SimpleParticleID) {
-				auto* proj = static_cast<CSimpleParticleSystem*>(p);
-				proj->ECS = 1; // workaround to make the projectile not add to projHandler in Init()
-				proj->Init(owner, pos);
-				projectileHandler.AddECSProjectile(proj, withMutex);
-				return true;
-			} else if (id == CBitmapMuzzleFlameID) {
-				auto* proj = static_cast<CBitmapMuzzleFlame*>(p);
-				proj->ECS = 1; // workaround to make the projectile not add to projHandler in Init()
-				proj->Init(owner, pos);
-				projectileHandler.AddECSProjectile(proj, withMutex);
-				return true;
-			}
-			return false;
-		};
 
 		for (unsigned int c = 0; c < psi.count; c++) {
 			CExpGenSpawnable* projectile = CExpGenSpawnable::CreateSpawnable(psi.spawnableID);
 			ExecuteExplosionCode(&psi.code[0], damage, (char*) projectile, c, dir);
-			if (handleByECS(projectile, psi.spawnableID, c)) {
-				continue;
-			}
 			projectile->Init(owner, pos);
 		}
 	}
