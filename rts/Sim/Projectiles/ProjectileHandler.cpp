@@ -71,11 +71,28 @@ ProjMemPool projMemPool;
 CProjectileHandler projectileHandler;
 
 entt::registry registry;
+static entt::organizer ecsTaskList;
 static std::vector<CProjectile*> queuedProjectiles; 
 static std::unordered_map<std::type_index, std::function<void(CProjectile*)>> ecsSpawner;
 
 namespace {
-	struct Destroyed {};
+
+static void createECSTaskGraph() {
+	ecsTaskList.clear();
+	ecsTaskList.emplace<&LifetimeSystem>();
+	ecsTaskList.emplace<&LifetimePositionAboveGroundSystem>();
+	ecsTaskList.emplace<&LifetimeAlphaSystem>();
+	ecsTaskList.emplace<&DeleteDestroyedSystem>();
+
+	ecsTaskList.emplace<&PositionSystem>();
+	ecsTaskList.emplace<&SpeedParticlePhysSystem>();
+	// ecsTaskList.emplace<&RotationSystem>(); // done in Render() context?
+	ecsTaskList.emplace<&GrowSizeSystem>();
+
+	// preallocate pools
+	for(auto &&node: ecsTaskList.graph()) {
+		node.prepare(registry);
+	}
 }
 
 static void updateECSParticles() {
@@ -83,62 +100,14 @@ static void updateECSParticles() {
 	SCOPED_TIMER("Sim::Projectiles::Update::ECS");
 	registry.ctx().get<PhysDelta>().frameNum = gs->frameNum;
 
-	{ // lifetime updates
-		registry.view<Lifetime, const Decayrate>().each([&](auto entity, auto& lifetime, const auto& decayrate) { 
-			if (LifetimeSystem(lifetime, decayrate)) {
-				registry.emplace<Destroyed>(entity);
-				//registry.destroy(entity);
-			}
-		});	
-		
-		// TODO is looping over a tag good performance?
-		registry.view<GroundCollisionTag, Position>().each([&](auto entity, auto& position) { 
-			if (LifetimePositionAboveGroundSystem(position)) {
-				registry.emplace<Destroyed>(entity);
-			}
-		});
-		
-		registry.view<Alpha, AlphaDecayrate>().each([&](auto entity, auto& alpha, const auto& decayrate) { 
-			if (LifetimeAlphaSystem(alpha, decayrate)) {
-				registry.emplace<Destroyed>(entity);
-			}
-		});
+	// execute ecs system updates
+	for (auto& vert : ecsTaskList.graph()) {
+		vert.callback()(vert.data(), registry);
 	}
-			
-	auto d = registry.view<Destroyed>();
-	registry.destroy(d.begin(), d.end());
-
-	//auto b = std::async(std::launch::async, [&]()
-	{ // position updates
-		registry.view<Position, const Speed>().each([&](auto entity, auto& pos, const auto& speed) { 
-			PositionSystem(pos, speed);
-		});
-
-		registry.view<Speed, const ParticlePhys>().each([&](auto entity, auto& speed, const auto& phys) { 
-			SpeedParticlePhysSystem(speed, phys);
-		});
-	}
-	//);	
-	
-	//auto d = std::async(std::launch::async, [&]()
-	{
-		/*
-		registry.view<Rotation, const RotParams, const AnimParams>().each([&](auto entity, auto& rot, const auto& rotparams, const auto& animParams) {
-			const float t = (gs->frameNum - animParams.createFrame + globalRendering->timeOffset);
-			RotationSystem(rot, rotparams, t);
-		});
-		*/
-	}
-	//);
-	
-	registry.view<Sized, SizeChange>(entt::exclude<CBitmapMuzzleFlameTag>).each([&](auto ent, auto& size, auto& sizeChange){
-		GrowSizeSystem(size, sizeChange);
-	});
-	
-	//b.wait();
-	//d.wait();
 	
 }
+
+} // unnamed namespace
 
 void CProjectileHandler::AddECSProjectile(CSimpleParticleSystem* proj) {
 	for (int i=0; i< proj->GetProjectilesCount(); ++i)
@@ -179,7 +148,7 @@ void CProjectileHandler::AddECSProjectile(CBitmapMuzzleFlame* proj) {
 	registry.emplace<Lifetime>(ent, 0.0f);
 	registry.emplace<Decayrate>(ent, 1.0/proj->ttl);
 	registry.emplace<Sized>(ent, proj->size);
-	registry.emplace<SizeChange>(ent, 1.0, proj->sizeGrowth); // growth done in Draw()
+	registry.emplace<LifetimeSizeChange>(ent, proj->sizeGrowth); // growth done in Draw()
 	registry.emplace<Length>(ent, proj->length);
 	registry.emplace<AnimProgress>(ent, 0.0f);	
 	registry.emplace<AnimParams>(ent, proj->animParams, proj->createFrame);
@@ -272,6 +241,7 @@ void CProjectileHandler::Init()
 	ecsSpawner[std::type_index(typeid(CDirtProjectile))] = [&](CProjectile* p) {
 		AddECSProjectile(static_cast<CDirtProjectile*>(p));
 	};
+	createECSTaskGraph();
 }
 
 void CProjectileHandler::Kill()

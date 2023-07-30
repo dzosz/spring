@@ -205,8 +205,12 @@ void UpdateAnimProgressSystem()
 	});
 }
 
-bool LifetimePositionAboveGroundSystem(const Position& pos) {
-	return (CGround::GetApproximateHeight(pos.value.x, pos.value.z, false) - 40.0f > pos.value.y);
+void LifetimePositionAboveGroundSystem(entt::registry& reg) {
+	reg.view<const Position>().each([&](const auto ent, auto& pos) {
+		if(CGround::GetApproximateHeight(pos.value.x, pos.value.z, false) - 40.0f > pos.value.y) {
+			registry.emplace<Destroyed>(ent);
+		}
+	});
 }
 
 static bool CanDrawProjectile(const Position& pos, const AlliedTeam& allyTeam)
@@ -257,7 +261,7 @@ template <typename ViewT>
 static void DrawCBitmapMuzzleFlame(entt::entity ent, ViewT&& view)
 {
 	auto& life = view.template get<const Lifetime>(ent).value;
-	auto& sizeGrowth = view.template get<const SizeChange>(ent).sizeGrowth;
+	auto& sizeGrowth = view.template get<const LifetimeSizeChange>(ent).sizeGrowth;
 	auto& size = view.template get<const Sized>(ent).value;
 	auto& length = view.template get<const Length>(ent).value;
 	const float igrowth = sizeGrowth * (1.0f - Square(1.0f - life));
@@ -342,7 +346,7 @@ static void DrawCBitmapMuzzleFlame(entt::entity ent, ViewT&& view)
 static void DrawClass(CBitmapMuzzleFlameTag)
 {
 	auto view = registry.view<CBitmapMuzzleFlameTag, const Position, const DrawPosition, DrawRadius, const AlliedTeam,
-			const Lifetime, const SizeChange, const Sized, const Length, const RenderData,
+			const Lifetime, const LifetimeSizeChange, const Sized, const Length, const RenderData,
 			const FrontOffset, const Direction, const Rotation, const AnimParams, 
 			const AnimProgress
 			>();
@@ -378,7 +382,6 @@ static void DrawCDirtProjectile(entt::entity ent, ViewT&& view)
 		return;
 
 	partAbove = std::min(partAbove, 1.0f);
-	LOG("DrawCDirtProjectile()");
 
 	unsigned char col[4];
 	col[0] = (unsigned char) (color.x * alpha);
@@ -417,10 +420,7 @@ void DrawClass(CDirtProjectileTag)
 
 void DrawSystem()
 {
-	registry.view<Rotation, const RotParams, const AnimParams>().each([&](auto ent, auto& rot, const auto& rotparams, const auto& animParams) {
-		const float t = (registry.ctx().get<PhysDelta>().frameNum - animParams.createFrame + registry.ctx().get<PhysDelta>().timeOffset);
-		RotationSystem(rot, rotparams, t);
-	});
+	RotationSystem(registry.view<Rotation, const RotParams, const AnimParams>());
 	// FIXME performance issues. maybe add entt::observer and check visibility first?
 	DrawClass(SimpleParticleSystemTag{});
 	DrawClass(CBitmapMuzzleFlameTag{});

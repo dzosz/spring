@@ -72,6 +72,10 @@ struct SizeChange {
 	float sizeGrowth;
 };
 
+struct LifetimeSizeChange {
+	float sizeGrowth;
+};
+
 struct AlliedTeam {
 	int value;
 };
@@ -111,3 +115,4 @@ struct CDirtProjectileTag {};
 
 // System behavior Tags
 struct GroundCollisionTag {};
+struct Destroyed {};
