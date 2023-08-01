@@ -37,6 +37,7 @@ To do:
 #include "System/SpringMath.h"
 #include "Rendering/Textures/TextureAtlas.h"
 
+#include "Sim/Misc/GlobalSynced.h"
 #include "Sim/Misc/LosHandler.h"
 #include "Sim/Misc/TeamHandler.h"
 
@@ -170,26 +171,28 @@ static void DrawSimpleParticleSystem(const DrawPosition& drawPos, const Speed& s
 	);
 }
 
-} // unnamed namespace
-
-void UpdateDrawPosSystem()
+void UpdateDrawPosSystem(entt::view<entt::get_t<const Position, const Speed, DrawPosition>> view)
 {
-	const float t = registry.ctx().get<PhysDelta>().timeOffset;
-	registry.view<const Position, const Speed, DrawPosition>().each([&](
+	//const float t = registry.ctx().get<PhysDelta>().timeOffset;
+	const float t = globalRendering->timeOffset;
+	view.each([&](
 		auto ent, const Position& pos, const Speed& speed, DrawPosition& drawPos) {
 		drawPos.value = (speed.value.w != 0.0f) ? (pos.value + speed.value * t) : pos.value;
 	});
+	/*
 	registry.view<const Position, DrawPosition>(entt::exclude<Speed>).each([&](
 		auto ent, const Position& pos, DrawPosition& drawPos) {
 		drawPos.value = pos.value;
 	});
+	*/
 }
 
-void UpdateAnimProgressSystem()
+void UpdateAnimProgressSystem(entt::view<entt::get_t<AnimProgress, AnimParams>> view)
 {
-	registry.view<AnimProgress, AnimParams>().each([&](auto ent, auto& animProgress, auto& animParams) {
-		const float t = (registry.ctx().get<PhysDelta>().frameNum - animParams.createFrame +
-						 registry.ctx().get<PhysDelta>().timeOffset);
+	view.each([&](auto ent, auto& animProgress, auto& animParams) {
+		//const float t = (registry.ctx().get<PhysDelta>().frameNum - animParams.createFrame +
+		//				 registry.ctx().get<PhysDelta>().timeOffset);
+		const float t = gs->frameNum - animParams.createFrame + globalRendering->timeOffset;
 		if (static_cast<int>(animParams.value.x) <= 1 && static_cast<int>(animParams.value.y) <= 1) {
 			animProgress.value = 0.0f;
 			return;
@@ -204,6 +207,8 @@ void UpdateAnimProgressSystem()
 		}
 	});
 }
+
+} // unnamed namespace
 
 void LifetimePositionAboveGroundSystem(entt::registry& reg) {
 	reg.view<const Position>().each([&](const auto ent, auto& pos) {
@@ -420,6 +425,8 @@ void DrawClass(CDirtProjectileTag)
 
 void DrawSystem()
 {
+	UpdateAnimProgressSystem(registry.view<AnimProgress, AnimParams>());
+	UpdateDrawPosSystem(registry.view<const Position, const Speed, DrawPosition>());
 	RotationSystem(registry.view<Rotation, const RotParams, const AnimParams>());
 	// FIXME performance issues. maybe add entt::observer and check visibility first?
 	DrawClass(SimpleParticleSystemTag{});

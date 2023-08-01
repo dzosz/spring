@@ -67,6 +67,4 @@ inline void RotationSystem(entt::view<entt::get_t<Rotation, const RotParams, con
 	*/
 }
 
-void UpdateAnimProgressSystem();
-void UpdateDrawPosSystem();
 void DrawSystem();

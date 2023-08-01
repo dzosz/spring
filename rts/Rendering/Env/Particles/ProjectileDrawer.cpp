@@ -772,8 +772,6 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 	unsortedProjectiles.clear();
 
 	registry.ctx().get<PhysDelta>().timeOffset = globalRendering->timeOffset;
-	//auto ecsAnimJob = ThreadPool::Enqueue(UpdateAnimProgressSystem); // TODO why is this slower that Single Threaded?
-	//auto ecsDrawPosJob = ThreadPool::Enqueue(UpdateDrawPosSystem);
 
 	{
 		{
@@ -811,10 +809,6 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 		{
 			SCOPED_TIMER("Draw::World::Projectiles::ECS");
 			// TODO implement sorting for ECS particles
-			//ecsAnimJob->wait();
-			//ecsDrawPosJob->wait();
-			UpdateAnimProgressSystem();
-			UpdateDrawPosSystem();
 			DrawSystem();
 		}
 		} // scoped timer
