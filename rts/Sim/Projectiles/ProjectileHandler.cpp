@@ -47,7 +47,7 @@
 CONFIG(int, MaxParticles).defaultValue(10000).headlessValue(0).minimumValue(0);
 CONFIG(int, MaxNanoParticles).defaultValue(2000).headlessValue(0).minimumValue(0);
 
-bool ECS_MODE = false; // runtime switch to enable/disable ECS to see live performance difference
+bool ECS_MODE = false; // runtime switch to enable/disable ECS to see graphical differences
 
 CR_BIND(CProjectileHandler, )
 CR_REG_METADATA(CProjectileHandler, (
@@ -74,6 +74,14 @@ entt::registry registry;
 static entt::organizer ecsTaskList;
 static std::vector<CProjectile*> queuedProjectiles; 
 static std::unordered_map<std::type_index, std::function<void(CProjectile*)>> ecsSpawner;
+
+bool isEcsProj(const CProjectile* pro) {
+	if (!ECS_MODE)
+		return false;
+	auto type_idx = std::type_index(typeid(*pro));
+	auto it = ecsSpawner.find(type_idx);
+	return (it != ecsSpawner.end());
+}
 
 namespace {
 
@@ -117,16 +125,17 @@ void CProjectileHandler::AddECSProjectile(CSimpleParticleSystem* proj) {
 		registry.emplace<SimpleParticleSystemTag>(ent);
 		registry.emplace<DrawRadius>(ent, proj->drawRadius);
 		registry.emplace<DrawPosition>(ent, proj->drawPos);
+		registry.emplace<DrawOrder>(ent, proj->drawOrder, 0.0f);
 		registry.emplace<AlliedTeam>(ent, proj->allyteamID); // TODO maybe ignore this check if team is not set?
 		registry.emplace<Position>(ent, particles[i].pos);
 		registry.emplace<Speed>(ent, particles[i].speed);
 		registry.emplace<Rotation>(ent, particles[i].rotVal, particles[i].rotVel);
 		registry.emplace<RotParams>(ent, proj->rotParams);
-		registry.emplace<Lifetime>(ent, 0.0f);
+		registry.emplace<Lifetime>(ent, particles[i].life);
 		registry.emplace<Decayrate>(ent, particles[i].decayrate);
 		registry.emplace<Sized>(ent, particles[i].size);
 		registry.emplace<SizeChange>(ent, proj->sizeMod, proj->sizeGrowth);
-		registry.emplace<AnimProgress>(ent, 0.0f);
+		registry.emplace<AnimProgress>(ent, proj->animProgress);
 		registry.emplace<AnimParams>(ent, proj->animParams, proj->createFrame);
 		registry.emplace<ParticlePhys>(ent, proj->gravity, proj->airdrag);
 		registry.emplace<RenderData>(ent, proj->texture, nullptr, proj->colorMap, proj->directional);
@@ -139,6 +148,7 @@ void CProjectileHandler::AddECSProjectile(CBitmapMuzzleFlame* proj) {
 	registry.emplace<FrontOffset>(ent, proj->frontOffset); // BitmapMuzzleFlameSpecific
 	registry.emplace<DrawRadius>(ent, proj->drawRadius);
 	registry.emplace<DrawPosition>(ent, proj->drawPos);
+	registry.emplace<DrawOrder>(ent, proj->drawOrder, 0.0f);
 	registry.emplace<AlliedTeam>(ent, proj->allyteamID); // TODO maybe ignore this check if team is not set?
 	registry.emplace<Position>(ent, proj->pos);
 	registry.emplace<Direction>(ent, proj->dir);
@@ -163,6 +173,7 @@ void CProjectileHandler::AddECSProjectile(CDirtProjectile* proj) {
 
 	registry.emplace<DrawRadius>(ent, proj->drawRadius);
 	registry.emplace<DrawPosition>(ent, proj->drawPos);
+	registry.emplace<DrawOrder>(ent, proj->drawOrder, 0.0f);
 	registry.emplace<AlliedTeam>(ent, proj->allyteamID);
 	registry.emplace<Position>(ent, proj->pos);
 	registry.emplace<Speed>(ent, proj->speed);
@@ -189,14 +200,16 @@ void CProjectileHandler::DrainUnsyncedProjectileQueue() {
 	for (auto* p : queuedProjectiles) {
 		auto type_idx = std::type_index(typeid(*p));
 		auto it = ecsSpawner.find(type_idx);
-		if (it == ecsSpawner.end()) {
-			// legacy unsynced projectile path
-			p->id = static_cast<int>(projectiles[false].Add(p));	
-			CreateProjectile(p);
-			continue;
+		if (it != ecsSpawner.end()) {
+			it->second(p);
+			// Commented out so we can pause the game and see same frame with Legacy or ECS projectiles
+			// when ECS_MODE option is changed
+			//projMemPool.free(p);
+			//continue;
 		}
-		it->second(p);
-		projMemPool.free(p);
+		// legacy unsynced projectile path
+		p->id = static_cast<int>(projectiles[false].Add(p));
+		CreateProjectile(p);
 	}
 	queuedProjectiles.clear();
 }
@@ -513,7 +526,7 @@ void CProjectileHandler::AddProjectile(CProjectile* p)
 	assert(p->id < 0);
 	assert(p->createMe);
 
-	if (!p->synced && ECS_MODE) {
+	if (!p->synced) {
 		AddUnsyncedParticleToQueue(p);
 		return;
 	}

@@ -21,6 +21,11 @@ struct DrawPosition {
 	float3 value;
 };
 
+struct DrawOrder {
+	float drawOrder;
+	float distanceFromCamera; // should be negative as we want to draw far object first
+};
+
 struct DrawRadius {
 	float value;
 };

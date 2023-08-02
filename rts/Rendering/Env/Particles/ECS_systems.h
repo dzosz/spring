@@ -4,7 +4,6 @@
 #include "lib/entt/entity/view.hpp"
 #include "lib/entt/fwd.hpp"
 #include "lib/entt/entity/registry.hpp"
-#include "Rendering/GlobalRendering.h"
 	
 inline void GrowSizeSystem(Sized& s, const SizeChange& change) {
 	// TODO optionally multiply by timeOffset if executed in Draw context
@@ -15,7 +14,7 @@ inline void LifetimeSystem(entt::registry& reg) {
 	reg.view<Lifetime, const Decayrate>().each([&](const auto ent, auto& l, const auto& d) {
 		l.value += d.value;
 		if (l.value >= 1.0)
-			reg.emplace<Destroyed>(ent);
+			reg.emplace_or_replace<Destroyed>(ent);
 	});
 }
 
@@ -23,7 +22,7 @@ inline void LifetimeAlphaSystem(entt::registry& reg) {
 	reg.view<Alpha, const AlphaDecayrate>().each([&](const auto ent, auto& l, const auto& d) {
 		l.v -= d.v;
 		if (l.v <= 0.0)
-			reg.emplace<Destroyed>(ent);
+			reg.emplace_or_replace<Destroyed>(ent);
 	});
 }
 
@@ -48,23 +47,8 @@ inline void SpeedParticlePhysSystem(entt::view<entt::get_t<Speed, const Particle
 	});
 }
 
-inline void RotationSystem(entt::view<entt::get_t<Rotation, const RotParams, const AnimParams>> view) {
-	float t = globalRendering->timeOffset;
-	// const float t = (registry.ctx().get<PhysDelta>().frameNum - animParams.createFrame + registry.ctx().get<PhysDelta>().timeOffset); // TODO
-	view.each([&](const auto ent, auto& rot, const auto& rotParams, auto& animParams) {
-		// rotParams.y is acceleration in angle per frame^2
-		rot.rotVel = rotParams.value.x + rotParams.value.y * t;
-		rot.rotVal = rotParams.value.z + rot.rotVel      * t;
-	});
-	
-	/* TODO rotation definitions differ in CExpGenSpawnable()
-	 * 	rotVel = rotParams.x + rotParams.y * t;
-	rotVal = rotParams.z + rotVel      * t;
-	*/
-	/* SimpleParticleSystem()
-	 * p.rotVal += p.rotVel;
-	   p.rotVel += rotParams.y; //rot accel
-	*/
-}
+void RotationSystem(entt::view<entt::get_t<Rotation, const RotParams, const AnimParams>> view);
 
-void DrawSystem();
+class CProjectile;
+void PreDrawSystem();
+void DrawSystem(const std::vector<std::pair<std::pair<float, float>, CProjectile*>>&);

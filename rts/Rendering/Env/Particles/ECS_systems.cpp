@@ -2,42 +2,47 @@
 ECS checklist:
 
 Done:
+* Runtime switch for ECS MODE (you can pause the game, switch the mode to observe the difference)
 * Migrated SimpleParticleProjectile to ECS
 * Migrated CBitmapMuzzleFlame to ECS
+* Migrated CDirtProjectile to ECS
+* Create graph (organizer) for parallel execution of ECS tasks
 * Drawing
 * Parallel Projectiles::Sim() calculation
 * Thread safety for both legacy and ECS projectiles in explosion generator
+* Projectile sorting based on draw distance (integrated with existing synced projectiles)
 
 To do:
+* Resolve issue of some particles being TOO SMALL (e.g. dust clouds by ECS SimpleParticleSystem)
 * Make clear distinction what should be computed in Sim() and what in Draw() contexts.
   Most projectiles only update lifetime in Sim() except for SimpleParticleSystem and 
   unsynced projectiles that interact with environment - e.g. Dirt projectile disappears
   after hitting the ground so I guess it needs to be updated in Sim() ?
 * Improve approach to Drawing. For now the drawing functions were copied over from legacy classes.
   What is the fastest way to draw visible projectiles? 
-* Add ordered drawing to ECS particles
-* Create graph for parallel execution of ECS tasks
 * Resolve issue with drawing being slower than legacy
 * Resolve issue with Sim::update() being slower than legacy
 * Create new Spawner class (see explosion generator) that doesn't require legacy Particles to exist
   (currently ECS particles copy out data from original Particles, then deallocates them)
 * Add minimap and shadow drawing for ECS particles
+* Add global los to ECS components
 
 */
 #include "ECS_systems.h"
+
+#include "Sim/Projectiles/Projectile.h"
 
 #include "Game/Camera.h"
 #include "Game/GlobalUnsynced.h"
 #include "Rendering/GlobalRendering.h"
 #include "Rendering/GL/RenderBuffers.h"
 #include "Rendering/Textures/ColorMap.h"
-#include "Sim/Projectiles/ExpGenSpawnableMemberInfo.h"
+
 #include "System/float3.h"
 #include "System/Log/ILog.h"
 #include "System/SpringMath.h"
 #include "Rendering/Textures/TextureAtlas.h"
 
-#include "Sim/Misc/GlobalSynced.h"
 #include "Sim/Misc/LosHandler.h"
 #include "Sim/Misc/TeamHandler.h"
 
@@ -49,12 +54,6 @@ To do:
 #include "lib/entt/entt.hpp"
 extern entt::registry registry;
 namespace {
-static TypedRenderBuffer<VA_TYPE_PROJ>& GetPrimaryRenderBuffer()
-{
-	return RenderBuffer::GetTypedRenderBuffer<VA_TYPE_PROJ>();
-}
-
-
 static void AddEffectsQuad(const VA_TYPE_TC& tl, const VA_TYPE_TC& tr, const VA_TYPE_TC& br, const VA_TYPE_TC& bl, const float3& animInfo)
 {
 	float minS = std::numeric_limits<float>::max()   ; float minT = std::numeric_limits<float>::max()   ;
@@ -66,7 +65,7 @@ static void AddEffectsQuad(const VA_TYPE_TC& tl, const VA_TYPE_TC& tr, const VA_
 		((maxT = std::max(maxT, arg.t)), ...);
 	}, tl, tr, br, bl);
 
-	auto& rb = GetPrimaryRenderBuffer();
+	auto& rb = CExpGenSpawnable::GetPrimaryRenderBuffer();
 
 	const auto uvInfo = float4{ minS, minT, maxS - minS, maxT - minT };
 	//const auto animInfo = float3{ animParams.x, animParams.y, animProgress };
@@ -86,22 +85,30 @@ static bool IsValidTexture(const AtlasedTexture* tex)
 	return tex && tex != &CTextureAtlas::dummy;
 }
 
-static void DrawSimpleParticleSystem(const DrawPosition& drawPos, const Speed& speed, const Sized& sized,
-				  const Lifetime& l, const RenderData& data, const Rotation& rot,
-				  const AnimParams& animParams, const AnimProgress& animProgress)
+template <typename ViewT>
+static void DrawSimpleParticleSystem(entt::entity ent, ViewT&& view)
 {
+	const auto& drawPos = view.template get<const DrawPosition>(ent).value;
+	const auto& speed = view.template get<const Speed>(ent).value;
+	const auto& sized = view.template get<const Sized>(ent).value;
+	const auto& lifetime = view.template get<const Lifetime>(ent).value;
+	const auto& data = view.template get<const RenderData>(ent);
+	const auto& rot = view.template get<const Rotation>(ent);
+	const auto& animParams = view.template get<const AnimParams>(ent);
+	const auto& animProgress = view.template get<const AnimProgress>(ent);
+			
 	std::array<float3, 4> bounds;
 	const bool shadowPass = (camera->GetCamType() == CCamera::CAMTYPE_SHADOW);
 	if (data.directional && !shadowPass) {
-		const float3 zdir = (drawPos.value - camera->GetPos()).SafeANormalize();
-			  float3 ydir = zdir.cross(speed.value); float yDirLen2 = ydir.SqLength(); ydir.SafeANormalize();
+		const float3 zdir = (drawPos - camera->GetPos()).SafeANormalize();
+			  float3 ydir = zdir.cross(speed); float yDirLen2 = ydir.SqLength(); ydir.SafeANormalize();
 		const float3 xdir = ydir.cross(zdir);
 
-		const float3 interPos = drawPos.value;
-		const float size = sized.value;
+		const float3 interPos = drawPos;
+		const float size = sized;
 
 		unsigned char color[4];
-		data.colorMap->GetColor(color, l.value);
+		data.colorMap->GetColor(color, lifetime);
 
 		const float3* fwdDir = &zdir;
 
@@ -114,8 +121,8 @@ static void DrawSimpleParticleSystem(const DrawPosition& drawPos, const Speed& s
 			};
 		} else {
 			// in this case the particle's coor-system is degenerate
-			const float3 cameraRight = camera->GetRight() * sized.value;
-			const float3 cameraUp    = camera->GetUp()    * sized.value;
+			const float3 cameraRight = camera->GetRight() * sized;
+			const float3 cameraUp    = camera->GetUp()    * sized;
 			fwdDir = &camera->GetForward();
 
 			bounds = {
@@ -143,11 +150,11 @@ static void DrawSimpleParticleSystem(const DrawPosition& drawPos, const Speed& s
 	}
 
 	unsigned char color[4];
-	data.colorMap->GetColor(color, l.value);
+	data.colorMap->GetColor(color, lifetime);
 
-	const float3 interPos = drawPos.value;
-	const float3 cameraRight = camera->GetRight() * sized.value;
-	const float3 cameraUp    = camera->GetUp()    * sized.value;
+	const float3 interPos = drawPos;
+	const float3 cameraRight = camera->GetRight() * sized;
+	const float3 cameraUp    = camera->GetUp()    * sized;
 
 	bounds = {
 		-cameraRight - cameraUp,
@@ -171,28 +178,37 @@ static void DrawSimpleParticleSystem(const DrawPosition& drawPos, const Speed& s
 	);
 }
 
-void UpdateDrawPosSystem(entt::view<entt::get_t<const Position, const Speed, DrawPosition>> view)
+void UpdateDrawPosSpeedSystem(entt::view<entt::get_t<const Position, const Speed, DrawPosition>> view)
 {
-	//const float t = registry.ctx().get<PhysDelta>().timeOffset;
-	const float t = globalRendering->timeOffset;
+	const float t = registry.ctx().get<PhysDelta>().timeOffset;
 	view.each([&](
 		auto ent, const Position& pos, const Speed& speed, DrawPosition& drawPos) {
 		drawPos.value = (speed.value.w != 0.0f) ? (pos.value + speed.value * t) : pos.value;
 	});
-	/*
-	registry.view<const Position, DrawPosition>(entt::exclude<Speed>).each([&](
+}
+
+void UpdateDrawPosSystem(entt::view<entt::get_t<const Position, DrawPosition>, entt::exclude_t<Speed>> view)
+{
+	view.each([&](
 		auto ent, const Position& pos, DrawPosition& drawPos) {
 		drawPos.value = pos.value;
 	});
-	*/
 }
 
-void UpdateAnimProgressSystem(entt::view<entt::get_t<AnimProgress, AnimParams>> view)
+void UpdateDrawOrder(entt::view<entt::get_t<const DrawPosition, DrawOrder>> view)
 {
-	view.each([&](auto ent, auto& animProgress, auto& animParams) {
-		//const float t = (registry.ctx().get<PhysDelta>().frameNum - animParams.createFrame +
-		//				 registry.ctx().get<PhysDelta>().timeOffset);
-		const float t = gs->frameNum - animParams.createFrame + globalRendering->timeOffset;
+	const CCamera* cam = CCameraHandler::GetActiveCamera();
+	view.each([&](
+		auto ent, const DrawPosition& drawPos, DrawOrder& drawOrder) {
+		drawOrder.distanceFromCamera = -cam->ProjectedDistance(drawPos.value);
+	});
+}
+
+void UpdateAnimProgressSystem(entt::view<entt::get_t<AnimProgress, const AnimParams>> view)
+{
+	view.each([&](auto ent, auto& animProgress, const auto& animParams) {
+		const float t = (registry.ctx().get<PhysDelta>().frameNum - animParams.createFrame +
+						 registry.ctx().get<PhysDelta>().timeOffset);
 		if (static_cast<int>(animParams.value.x) <= 1 && static_cast<int>(animParams.value.y) <= 1) {
 			animProgress.value = 0.0f;
 			return;
@@ -211,10 +227,20 @@ void UpdateAnimProgressSystem(entt::view<entt::get_t<AnimProgress, AnimParams>> 
 } // unnamed namespace
 
 void LifetimePositionAboveGroundSystem(entt::registry& reg) {
-	reg.view<const Position>().each([&](const auto ent, auto& pos) {
+	reg.view<const Position, GroundCollisionTag>().each([&](const auto ent, auto& pos) {
 		if(CGround::GetApproximateHeight(pos.value.x, pos.value.z, false) - 40.0f > pos.value.y) {
-			registry.emplace<Destroyed>(ent);
+			registry.emplace_or_replace<Destroyed>(ent);
 		}
+	});
+}
+
+void RotationSystem(entt::view<entt::get_t<Rotation, const RotParams, const AnimParams>> view) {
+	// TODO execute in Sim() or Draw()?
+	view.each([&](const auto ent, auto& rot, const auto& rotParams, auto& animParams) {
+		const float t = (registry.ctx().get<PhysDelta>().frameNum - animParams.createFrame + registry.ctx().get<PhysDelta>().timeOffset);
+		// rotParams.y is acceleration in angle per frame^2
+		rot.rotVel = rotParams.value.x + rotParams.value.y * t;
+		rot.rotVal = rotParams.value.z + rot.rotVel      * t;
 	});
 }
 
@@ -247,19 +273,18 @@ static bool isParticleVisible(const Position& pos, const DrawPosition& drawPos,
 
 static void DrawClass(SimpleParticleSystemTag)
 {
-	registry.view<SimpleParticleSystemTag, Position, DrawPosition,
-			DrawRadius, AlliedTeam, Speed, Sized, Lifetime, RenderData, Rotation,
-			AnimParams, AnimProgress>().each([&](
-				auto ent, const Position& pos, const DrawPosition& drawPos,
-				const DrawRadius& drawRadius, const AlliedTeam& allyteam, const Speed& speed,
-				const Sized& sized, const Lifetime& lifetime, const RenderData& renderData,
-				const Rotation& rot, const AnimParams& animParams, const AnimProgress& animProgress) {	
+	auto view = registry.view<SimpleParticleSystemTag, const Position, const DrawPosition,
+			const DrawRadius, const AlliedTeam, const Speed, const Sized, const Lifetime,
+			const RenderData, const Rotation, const AnimParams, const AnimProgress>();
+	for (auto ent : view) {
+		 const auto& pos = view.get<const Position>(ent);
+		 const auto& drawPos = view.get<const DrawPosition>(ent);
+		 const auto& drawRadius = view.get<const DrawRadius>(ent);
+		 const auto& allyteam = view.get<const AlliedTeam>(ent);
 		if (!isParticleVisible(pos, drawPos, drawRadius, allyteam)) 
-			return;
-		DrawSimpleParticleSystem(drawPos, speed, sized,
-								lifetime, renderData, rot,
-								animParams, animProgress);
-	});
+			continue;
+		DrawSimpleParticleSystem(ent, view);
+	}
 }
 
 template <typename ViewT>
@@ -350,10 +375,10 @@ static void DrawCBitmapMuzzleFlame(entt::entity ent, ViewT&& view)
 
 static void DrawClass(CBitmapMuzzleFlameTag)
 {
-	auto view = registry.view<CBitmapMuzzleFlameTag, const Position, const DrawPosition, DrawRadius, const AlliedTeam,
-			const Lifetime, const LifetimeSizeChange, const Sized, const Length, const RenderData,
-			const FrontOffset, const Direction, const Rotation, const AnimParams, 
-			const AnimProgress
+	auto view = registry.view<CBitmapMuzzleFlameTag, const Position, const DrawPosition,
+			DrawRadius, const AlliedTeam,	const Lifetime, const LifetimeSizeChange,
+			const Sized, const Length, const RenderData, const FrontOffset, const Direction,
+			const Rotation, const AnimParams, const AnimProgress
 			>();
 	for (auto ent : view) {
 		auto& pos = view.get<Position>(ent);
@@ -423,13 +448,51 @@ void DrawClass(CDirtProjectileTag)
 	};
 }
 
-void DrawSystem()
-{
-	UpdateAnimProgressSystem(registry.view<AnimProgress, AnimParams>());
-	UpdateDrawPosSystem(registry.view<const Position, const Speed, DrawPosition>());
+void PreDrawSystem() {
+	UpdateAnimProgressSystem(registry.view<AnimProgress, const AnimParams>());
+	UpdateDrawPosSystem(registry.view<const Position, DrawPosition>(entt::exclude<Speed>));
+	UpdateDrawPosSpeedSystem(registry.view<const Position, const Speed, DrawPosition>());	
+	UpdateDrawOrder(registry.view<const DrawPosition, DrawOrder>());
 	RotationSystem(registry.view<Rotation, const RotParams, const AnimParams>());
-	// FIXME performance issues. maybe add entt::observer and check visibility first?
-	DrawClass(SimpleParticleSystemTag{});
-	DrawClass(CBitmapMuzzleFlameTag{});
-	DrawClass(CDirtProjectileTag{});
+}
+
+// Draws new ECS projectiles and legacy sortedProjectiles
+// this is a temporary compatible solution that respects drawing order and
+// prevents any graphical artifacts when drawing mixed ECS and legacy OOP projectiles
+// this approach uses runtime look up of the components type
+void DrawSystem(const std::vector<std::pair<std::pair<float, float>, CProjectile*>>& sortedProj)
+{ // TODO figure out fastest way for dispatching. maybe add entt::observer and check proj visibility first?	
+	registry.sort<DrawOrder>([](const auto &lhs, const auto &rhs) {
+		return std::pair(lhs.drawOrder, lhs.distanceFromCamera) < std::pair(rhs.drawOrder, rhs.distanceFromCamera);
+	}); 
+
+	auto projIt = sortedProj.begin();
+	registry.view<const DrawOrder>().each([&](auto ent, const auto& drawOrder) {
+		const auto dist = std::pair{drawOrder.drawOrder, drawOrder.distanceFromCamera};
+		while (projIt != sortedProj.end() && projIt->first < dist) {
+			projIt->second->Draw();
+			++projIt;
+		}
+
+		auto& pos = registry.get<Position>(ent);
+		auto& drawPos = registry.get<DrawPosition>(ent);
+		auto& drawRadius = registry.get<DrawRadius>(ent);
+		auto& allyteam = registry.get<AlliedTeam>(ent);
+		if (!isParticleVisible(pos, drawPos, drawRadius, allyteam))
+			return;
+
+		// TODO this dispatch uses registry instead view so it's slower TODO benchmark
+		if (registry.all_of<SimpleParticleSystemTag>(ent)) {
+			DrawSimpleParticleSystem(ent, registry);
+		} else if (registry.all_of<CBitmapMuzzleFlameTag>(ent)) {
+			DrawCBitmapMuzzleFlame(ent, registry);
+		} else if (registry.all_of<CDirtProjectileTag>(ent)) {
+			DrawCDirtProjectile(ent, registry);
+		}
+	});
+
+	while (projIt != sortedProj.end()) {
+		projIt->second->Draw();
+		++projIt;
+	}
 };

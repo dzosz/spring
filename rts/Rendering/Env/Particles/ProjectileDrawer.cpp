@@ -41,12 +41,14 @@
 CONFIG(int, SoftParticles).defaultValue(1).safemodeValue(0).description("Soften up CEG particles on clipping edges");
 
 
-static bool CProjectileDrawOrderSortingPredicate(const CProjectile* p1, const CProjectile* p2) noexcept {
-	return std::make_tuple(p2->drawOrder, p1->GetSortDist(), p1) > std::make_tuple(p1->drawOrder, p2->GetSortDist(), p2);
+static bool CProjectileDrawOrderSortingPredicate(
+		const std::pair<std::pair<float, float>, CProjectile*> p1,
+		const std::pair<std::pair<float, float>, CProjectile*> p2) noexcept {
+	return p1.first < p2.first;
 }
 
-static bool CProjectileSortingPredicate(const CProjectile* p1, const CProjectile* p2) noexcept {
-	return std::make_tuple(p1->GetSortDist(), p1) > std::make_tuple(p2->GetSortDist(), p2);
+static bool CProjectileSortingPredicate(const std::pair<std::pair<float, float>, CProjectile*> p1, const std::pair<std::pair<float, float>, CProjectile*> p2) noexcept {
+	return p1.first.second < p2.first.second;
 };
 
 
@@ -57,6 +59,8 @@ CProjectileDrawer* projectileDrawer = nullptr;
 
 
 extern entt::registry registry; // simple particle system
+extern bool ECS_MODE;
+extern bool isEcsProj(const CProjectile* pro);
 
 // can not be a CProjectileDrawer; destruction in global
 // scope might happen after ~EventHandler (referenced by
@@ -611,9 +615,12 @@ void CProjectileDrawer::DrawProjectileNow(CProjectile* pro, bool drawReflection,
 {
 	pro->drawPos = pro->GetDrawPos(globalRendering->timeOffset);
 
+	if (isEcsProj(pro)) { // avoid duplicated drawing when ECS projectiles are ON
+		return;
+	}
+
 	if (!CanDrawProjectile(pro, pro->GetAllyteamID()))
 		return;
-
 
 	if (drawRefraction && (pro->drawPos.y > pro->GetDrawRadius()) /*!pro->IsInWater()*/)
 		return;
@@ -627,11 +634,12 @@ void CProjectileDrawer::DrawProjectileNow(CProjectile* pro, bool drawReflection,
 
 	// no-op if no model
 	DrawProjectileModel(pro);
-
-	pro->SetSortDist(cam->ProjectedDistance(pro->pos));
-
+	
 	if (drawSorted && pro->drawSorted) {
-		sortedProjectiles.emplace_back(pro);
+		float drawOrder = pro->drawOrder;		
+		pro->SetSortDist(cam->ProjectedDistance(pro->pos));
+		float sortDist = pro->sortDist;
+		sortedProjectiles.emplace_back(std::pair{std::pair{drawOrder, -sortDist}, pro});
 	} else {
 		unsortedProjectiles.emplace_back(pro);
 	}
@@ -797,21 +805,26 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 			std::sort(sortedProjectiles.begin(), sortedProjectiles.end(), CProjectileSortingPredicate);
 
 		{
-		SCOPED_TIMER("Draw::Projectiles::PDraw");
-		for (auto p : sortedProjectiles) {
-			p->Draw();
+			SCOPED_TIMER("Draw::World::Projectiles::ECS::PreDraw");
+			PreDrawSystem();
+		} // scoped timer
+		
+		if (ECS_MODE) // NOTE runtime switch works even during pause
+		{
+			SCOPED_TIMER("Draw::Projectiles::Draw");
+			DrawSystem(sortedProjectiles);		
+		}
+		else
+		{
+			SCOPED_TIMER("Draw::Projectiles::Draw");
+			for (auto p : sortedProjectiles) {
+				p.second->Draw();
+			}
 		}
 
 		for (auto p : unsortedProjectiles) {
 			p->Draw();
 		}
-
-		{
-			SCOPED_TIMER("Draw::World::Projectiles::ECS");
-			// TODO implement sorting for ECS particles
-			DrawSystem();
-		}
-		} // scoped timer
 	}
 
 	glEnable(GL_BLEND);
