@@ -5,9 +5,11 @@
 #include "lib/entt/fwd.hpp"
 #include "lib/entt/entity/registry.hpp"
 	
-inline void GrowSizeSystem(Sized& s, const SizeChange& change) {
+inline void GrowSizeSystem(entt::view<entt::get_t<Sized, const SizeChange>> view) {
 	// TODO optionally multiply by timeOffset if executed in Draw context
-	s.value = s.value * change.sizeMod + change.sizeGrowth; 
+	view.each([&](auto ent, auto& size, const auto& sizeChange) {
+		size.value = size.value * sizeChange.sizeMod + sizeChange.sizeGrowth;
+	});
 }
 
 inline void LifetimeSystem(entt::registry& reg) {
