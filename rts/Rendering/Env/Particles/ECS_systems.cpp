@@ -6,14 +6,12 @@ Done:
 * Migrated SimpleParticleProjectile to ECS
 * Migrated CBitmapMuzzleFlame to ECS
 * Migrated CDirtProjectile to ECS
-* Create graph (organizer) for parallel execution of ECS tasks
-* Drawing
+* Created graph (organizer) for parallel execution of ECS tasks
 * Parallel Projectiles::Sim() calculation
 * Thread safety for both legacy and ECS projectiles in explosion generator
-* Projectile sorting based on draw distance (integrated with existing synced projectiles)
+* Projectile drawing & sorting based on draw distance (integrated with existing synced projectiles)
 
 To do:
-* Resolve issue of some particles being TOO SMALL (e.g. dust clouds by ECS SimpleParticleSystem)
 * Make clear distinction what should be computed in Sim() and what in Draw() contexts.
   Most projectiles only update lifetime in Sim() except for SimpleParticleSystem and 
   unsynced projectiles that interact with environment - e.g. Dirt projectile disappears
@@ -90,7 +88,7 @@ static void DrawSimpleParticleSystem(entt::entity ent, ViewT&& view)
 {
 	const auto& drawPos = view.template get<const DrawPosition>(ent).value;
 	const auto& speed = view.template get<const Speed>(ent).value;
-	const auto& sized = view.template get<const Sized>(ent).value;
+	const auto& size = view.template get<const Sized>(ent).value;
 	const auto& lifetime = view.template get<const Lifetime>(ent).value;
 	const auto& data = view.template get<const RenderData>(ent);
 	const auto& rot = view.template get<const Rotation>(ent);
@@ -105,7 +103,6 @@ static void DrawSimpleParticleSystem(entt::entity ent, ViewT&& view)
 		const float3 xdir = ydir.cross(zdir);
 
 		const float3 interPos = drawPos;
-		const float size = sized;
 
 		unsigned char color[4];
 		data.colorMap->GetColor(color, lifetime);
@@ -121,8 +118,8 @@ static void DrawSimpleParticleSystem(entt::entity ent, ViewT&& view)
 			};
 		} else {
 			// in this case the particle's coor-system is degenerate
-			const float3 cameraRight = camera->GetRight() * sized;
-			const float3 cameraUp    = camera->GetUp()    * sized;
+			const float3 cameraRight = camera->GetRight() * size;
+			const float3 cameraUp    = camera->GetUp()    * size;
 			fwdDir = &camera->GetForward();
 
 			bounds = {
@@ -153,8 +150,8 @@ static void DrawSimpleParticleSystem(entt::entity ent, ViewT&& view)
 	data.colorMap->GetColor(color, lifetime);
 
 	const float3 interPos = drawPos;
-	const float3 cameraRight = camera->GetRight() * sized;
-	const float3 cameraUp    = camera->GetUp()    * sized;
+	const float3 cameraRight = camera->GetRight() * size;
+	const float3 cameraUp    = camera->GetUp()    * size;
 
 	bounds = {
 		-cameraRight - cameraUp,
@@ -290,10 +287,11 @@ static void DrawClass(SimpleParticleSystemTag)
 template <typename ViewT>
 static void DrawCBitmapMuzzleFlame(entt::entity ent, ViewT&& view)
 {
-	auto& life = view.template get<const Lifetime>(ent).value;
-	auto& sizeGrowth = view.template get<const LifetimeSizeChange>(ent).sizeGrowth;
-	auto& size = view.template get<const Sized>(ent).value;
-	auto& length = view.template get<const Length>(ent).value;
+	auto life = view.template get<const Lifetime>(ent).value;
+	life += view.template get<const Decayrate>(ent).value * globalRendering->timeOffset;
+	const auto& sizeGrowth = view.template get<const LifetimeSizeChange>(ent).sizeGrowth;
+	const auto& size = view.template get<const Sized>(ent).value;
+	const auto& length = view.template get<const Length>(ent).value;
 	const float igrowth = sizeGrowth * (1.0f - Square(1.0f - life));
 	
 	const float isize = size * (igrowth + 1.0f);
@@ -376,7 +374,7 @@ static void DrawCBitmapMuzzleFlame(entt::entity ent, ViewT&& view)
 static void DrawClass(CBitmapMuzzleFlameTag)
 {
 	auto view = registry.view<CBitmapMuzzleFlameTag, const Position, const DrawPosition,
-			DrawRadius, const AlliedTeam,	const Lifetime, const LifetimeSizeChange,
+			DrawRadius, const AlliedTeam, const Decayrate, const Lifetime, const LifetimeSizeChange,
 			const Sized, const Length, const RenderData, const FrontOffset, const Direction,
 			const Rotation, const AnimParams, const AnimProgress
 			>();
