@@ -35,6 +35,7 @@ To do:
 #include "Rendering/GlobalRendering.h"
 #include "Rendering/GL/RenderBuffers.h"
 #include "Rendering/Textures/ColorMap.h"
+#include "Rendering/Env/Particles/ProjectileDrawer.h"
 
 #include "System/float3.h"
 #include "System/Log/ILog.h"
@@ -445,6 +446,46 @@ void DrawClass(CDirtProjectileTag)
 		DrawCDirtProjectile(ent, view);
 	};
 }
+template <typename ViewT>
+static void DrawCExploSpikeProjectile(entt::entity ent, ViewT&& view) 
+{
+	auto& pos = view.template get<const Position>(ent).value;
+	auto& dir = view.template get<const Direction>(ent).value;
+	auto& alpha = view.template get<const Alpha>(ent).v;
+	auto& alphaDecay = view.template get<const AlphaDecayrate>(ent).v;
+	auto& color = view.template get<const Color>(ent).v;
+	auto& length = view.template get<const Length>(ent).value;
+	auto& lengthGrowth = view.template get<const LengthChange>(ent).v;
+	auto& width = view.template get<const Width>(ent).value;
+	auto& drawPos = view.template get<const DrawPosition>(ent).value;
+	//auto& texture = view.template get<const RenderData>(ent).texture;
+	auto& animParams = view.template get<const AnimParams>(ent);
+	auto& animProgress = view.template get<const AnimProgress>(ent);
+	float3 animInfo = { animParams.value.x, animParams.value.y, animProgress.value };
+	
+	const float3 dif = (pos - camera->GetPos()).ANormalize();
+	const float3 dir2 = (dif.cross(dir)).ANormalize();
+
+	unsigned char col[4];
+	const float a = std::max(0.0f, alpha - alphaDecay * globalRendering->timeOffset) * 255.0f;
+	col[0] = (unsigned char)(a * color.x);
+	col[1] = (unsigned char)(a * color.y);
+	col[2] = (unsigned char)(a * color.z);
+	col[3] = 1;
+
+	const float3 l = (dir * length) + (lengthGrowth * globalRendering->timeOffset);
+	const float3 w = dir2 * width;
+
+	#define let projectileDrawer->laserendtex
+	AddEffectsQuad(
+		{ drawPos - l - w, let->xstart, let->ystart, col },
+		{ drawPos + l - w, let->xend,   let->ystart, col },
+		{ drawPos + l + w, let->xend,   let->yend,   col },
+		{ drawPos - l + w, let->xstart, let->yend,   col },
+		animInfo
+	);
+	#undef let
+}
 
 void PreDrawSystem() {
 	UpdateAnimProgressSystem(registry.view<AnimProgress, const AnimParams>());
@@ -486,6 +527,8 @@ void DrawSystem(const std::vector<std::pair<std::pair<float, float>, CProjectile
 			DrawCBitmapMuzzleFlame(ent, registry);
 		} else if (registry.all_of<CDirtProjectileTag>(ent)) {
 			DrawCDirtProjectile(ent, registry);
+		} else if (registry.all_of<CExploSpikeProjectileTag>(ent)) {
+			DrawCExploSpikeProjectile(ent, registry);
 		}
 	});
 

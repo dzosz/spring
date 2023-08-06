@@ -37,6 +37,7 @@
 #include "Rendering/Env/Particles/Classes/SimpleParticleSystem.h"
 #include "Rendering/Env/Particles/Classes/BitmapMuzzleFlame.h"
 #include "Rendering/Env/Particles/Classes/DirtProjectile.h"
+#include "Rendering/Env/Particles/Classes/ExploSpikeProjectile.h"
 #include <typeindex>
 
 // reserve 5% of maxNanoParticles for important stuff such as capture and reclaim other teams' units
@@ -96,6 +97,7 @@ static void createECSTaskGraph() {
 	ecsTaskList.emplace<&SpeedParticlePhysSystem>();
 	// ecsTaskList.emplace<&RotationSystem>(); // done in Render() context?
 	ecsTaskList.emplace<&GrowSizeSystem>();
+	ecsTaskList.emplace<&GrowLengthSystem>();
 
 	// preallocate pools
 	for(auto &&node: ecsTaskList.graph()) {
@@ -188,6 +190,29 @@ void CProjectileHandler::AddECSProjectile(CDirtProjectile* proj) {
 	registry.emplace<Color>(ent, proj->color);
 }
 
+void CProjectileHandler::AddECSProjectile(CExploSpikeProjectile* proj) {
+	LOG("CExploSpikeProjectile");
+	auto ent = registry.create();
+	registry.emplace<CExploSpikeProjectileTag>(ent);	
+
+	registry.emplace<DrawRadius>(ent, proj->drawRadius);
+	registry.emplace<DrawPosition>(ent, proj->drawPos);
+	registry.emplace<DrawOrder>(ent, proj->drawOrder, 0.0f);
+	registry.emplace<AlliedTeam>(ent, proj->allyteamID);
+	registry.emplace<Position>(ent, proj->pos);
+	registry.emplace<Speed>(ent, proj->speed);
+	registry.emplace<Alpha>(ent, proj->alpha);
+	registry.emplace<AlphaDecayrate>(ent, proj->alphaDecay);
+	registry.emplace<Width>(ent, proj->width);
+	registry.emplace<Direction>(ent, proj->dir);
+	registry.emplace<AnimProgress>(ent, 0.0f);
+	registry.emplace<AnimParams>(ent, proj->animParams, proj->createFrame);
+	registry.emplace<Length>(ent, proj->length);
+	registry.emplace<LengthChange>(ent, proj->lengthGrowth);
+	//registry.emplace<RenderData>(ent, projectileDrawer->laserendtex, nullptr, nullptr, false);
+	registry.emplace<Color>(ent, proj->color);
+}
+
 // COMMENT this approach can already be merged to master as it provides safety to projectiles container.
 // It avoids duplicated iteration over projectiles[synced] containers
 // and gives control when exactly to Update() new particles
@@ -254,6 +279,10 @@ void CProjectileHandler::Init()
 	ecsSpawner[std::type_index(typeid(CDirtProjectile))] = [&](CProjectile* p) {
 		AddECSProjectile(static_cast<CDirtProjectile*>(p));
 	};
+	ecsSpawner[std::type_index(typeid(CExploSpikeProjectile))] = [&](CProjectile* p) {
+		AddECSProjectile(static_cast<CExploSpikeProjectile*>(p));
+	};
+	
 	createECSTaskGraph();
 }
 

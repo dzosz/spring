@@ -12,6 +12,12 @@ inline void GrowSizeSystem(entt::view<entt::get_t<Sized, const SizeChange>> view
 	});
 }
 
+inline void GrowLengthSystem(entt::view<entt::get_t<Length, const LengthChange>> view) {
+	view.each([&](auto ent, auto& length, const auto& lengthChange) {
+		length.value += lengthChange.v;
+	});
+}
+
 inline void LifetimeSystem(entt::registry& reg) {
 	reg.view<Lifetime, const Decayrate>().each([&](const auto ent, auto& l, const auto& d) {
 		l.value += d.value;

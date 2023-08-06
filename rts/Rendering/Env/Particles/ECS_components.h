@@ -94,6 +94,14 @@ struct Length {
 	float value;
 };
 
+struct LengthChange {
+	float v;
+};
+
+struct Width {
+	float value;
+};
+
 //BitmapMuzzleFlame specific. maybe put it into the tag?
 struct FrontOffset {
 	float value;
@@ -117,6 +125,7 @@ struct Color {
 struct SimpleParticleSystemTag {};
 struct CBitmapMuzzleFlameTag {};
 struct CDirtProjectileTag {};
+struct CExploSpikeProjectileTag{};
 
 // System behavior Tags
 struct GroundCollisionTag {};
