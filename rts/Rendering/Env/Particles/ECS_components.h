@@ -51,6 +51,18 @@ struct Decayrate {
 	float value;
 };
 
+struct Heat {
+	float v;
+};
+
+struct HeatDecay {
+	float v;
+};
+
+struct MaxHeat {
+	float v;
+};
+
 struct Alpha {
 	float v;
 };
@@ -126,6 +138,7 @@ struct SimpleParticleSystemTag {};
 struct CBitmapMuzzleFlameTag {};
 struct CDirtProjectileTag {};
 struct CExploSpikeProjectileTag{};
+struct CHeatCloudProjectileTag{};
 
 // System behavior Tags
 struct GroundCollisionTag {};

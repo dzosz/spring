@@ -26,6 +26,14 @@ inline void LifetimeSystem(entt::registry& reg) {
 	});
 }
 
+inline void LifetimeHeatSystem(entt::registry& reg) {
+	reg.view<Heat, const HeatDecay>().each([&](const auto ent, auto& h, const auto& r) {
+		h.v -= r.v;
+		if (h.v <= 0.0)
+			reg.emplace_or_replace<Destroyed>(ent);
+	});
+}
+
 inline void LifetimeAlphaSystem(entt::registry& reg) {
 	reg.view<Alpha, const AlphaDecayrate>().each([&](const auto ent, auto& l, const auto& d) {
 		l.v -= d.v;

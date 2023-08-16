@@ -38,6 +38,7 @@
 #include "Rendering/Env/Particles/Classes/BitmapMuzzleFlame.h"
 #include "Rendering/Env/Particles/Classes/DirtProjectile.h"
 #include "Rendering/Env/Particles/Classes/ExploSpikeProjectile.h"
+#include "Rendering/Env/Particles/Classes/HeatCloudProjectile.h"
 #include <typeindex>
 
 // reserve 5% of maxNanoParticles for important stuff such as capture and reclaim other teams' units
@@ -91,6 +92,7 @@ static void createECSTaskGraph() {
 	ecsTaskList.emplace<&LifetimeSystem>();
 	ecsTaskList.emplace<&LifetimePositionAboveGroundSystem>();
 	ecsTaskList.emplace<&LifetimeAlphaSystem>();
+	ecsTaskList.emplace<&LifetimeHeatSystem>();
 	ecsTaskList.emplace<&DeleteDestroyedSystem>();
 
 	ecsTaskList.emplace<&PositionSystem>();
@@ -191,7 +193,6 @@ void CProjectileHandler::AddECSProjectile(CDirtProjectile* proj) {
 }
 
 void CProjectileHandler::AddECSProjectile(CExploSpikeProjectile* proj) {
-	LOG("CExploSpikeProjectile");
 	auto ent = registry.create();
 	registry.emplace<CExploSpikeProjectileTag>(ent);	
 
@@ -211,6 +212,32 @@ void CProjectileHandler::AddECSProjectile(CExploSpikeProjectile* proj) {
 	registry.emplace<LengthChange>(ent, proj->lengthGrowth);
 	//registry.emplace<RenderData>(ent, projectileDrawer->laserendtex, nullptr, nullptr, false);
 	registry.emplace<Color>(ent, proj->color);
+}
+
+void CProjectileHandler::AddECSProjectile(CHeatCloudProjectile* proj)
+{
+	auto ent = registry.create();
+	registry.emplace<CHeatCloudProjectileTag>(ent);
+	
+	registry.emplace<DrawRadius>(ent, proj->drawRadius);
+	registry.emplace<DrawPosition>(ent, proj->drawPos);
+	registry.emplace<DrawOrder>(ent, proj->drawOrder, 0.0f);
+	registry.emplace<AlliedTeam>(ent, proj->allyteamID);
+	
+	registry.emplace<Rotation>(ent, proj->rotVal, proj->rotVel);
+	
+	registry.emplace<Position>(ent, proj->pos);
+	registry.emplace<Speed>(ent, proj->speed);
+	
+	registry.emplace<Heat>(ent, proj->heat);
+	registry.emplace<HeatDecay>(ent, proj->heatFalloff);
+	registry.emplace<MaxHeat>(ent, proj->maxheat);
+	
+	registry.emplace<Sized>(ent, proj->size);
+	registry.emplace<SizeChange>(ent, 1.0 /* proj->sizemod */, proj->sizeGrowth);
+	
+	registry.emplace<AnimProgress>(ent, 0.0f);
+	registry.emplace<AnimParams>(ent, proj->animParams, proj->createFrame);
 }
 
 // COMMENT this approach can already be merged to master as it provides safety to projectiles container.
@@ -281,6 +308,10 @@ void CProjectileHandler::Init()
 	};
 	ecsSpawner[std::type_index(typeid(CExploSpikeProjectile))] = [&](CProjectile* p) {
 		AddECSProjectile(static_cast<CExploSpikeProjectile*>(p));
+	};
+	
+	ecsSpawner[std::type_index(typeid(CHeatCloudProjectile))] = [&](CProjectile* p) {
+		AddECSProjectile(static_cast<CHeatCloudProjectile*>(p));
 	};
 	
 	createECSTaskGraph();

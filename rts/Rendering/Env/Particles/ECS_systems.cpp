@@ -487,6 +487,61 @@ static void DrawCExploSpikeProjectile(entt::entity ent, ViewT&& view)
 	#undef let
 }
 
+template <typename ViewT>
+static void DrawCHeatCloudProjectile(entt::entity ent, ViewT&& view) 
+{
+	LOG("draw CHeat");
+	auto& pos = view.template get<const Position>(ent).value;
+	auto& heat = view.template get<const Heat>(ent).v;
+	auto& maxheat = view.template get<const MaxHeat>(ent).v;
+
+	auto& drawPos = view.template get<const DrawPosition>(ent).value;
+	auto& animParams = view.template get<const AnimParams>(ent);
+	auto& animProgress = view.template get<const AnimProgress>(ent);
+	float3 animInfo = { animParams.value.x, animParams.value.y, animProgress.value };
+
+	auto& size = view.template get<const Sized>(ent).value;
+	auto& sizemod = view.template get<const SizeChange>(ent).sizeMod;
+	auto& sizeGrowth = view.template get<const SizeChange>(ent).sizeGrowth;
+
+	const auto& rot = view.template get<const Rotation>(ent);
+
+	auto texture = projectileDrawer->heatcloudtex;
+
+	unsigned char col[4];
+	const float dheat = std::max(0.0f, heat-globalRendering->timeOffset);
+	const float alpha = (dheat / maxheat) * 255.0f;
+
+	col[0] = (unsigned char) alpha;
+	col[1] = (unsigned char) alpha;
+	col[2] = (unsigned char) alpha;
+	col[3] = 1;//(dheat/maxheat)*255.0f;
+
+	const float drawsize = (size + sizeGrowth * globalRendering->timeOffset) * (1.0f - sizemod);
+
+	const float3 ri = camera->GetRight();
+	const float3 up = camera->GetUp();
+
+	std::array<float3, 4> bounds = {
+		-ri * drawsize - up * drawsize,
+		ri * drawsize - up * drawsize,
+		ri * drawsize + up * drawsize,
+		-ri * drawsize + up * drawsize
+	};
+
+	if (math::fabs(rot.rotVal) > 0.01f) {
+		for (auto& b : bounds)
+			b = b.rotate(rot.rotVal, camera->GetForward());
+	}
+	AddEffectsQuad(
+			{ drawPos + bounds[0], texture->xstart, texture->ystart, col },
+			{ drawPos + bounds[1], texture->xend,   texture->ystart, col },
+			{ drawPos + bounds[2], texture->xend,   texture->yend,   col },
+			{ drawPos + bounds[3], texture->xstart, texture->yend,   col },
+			animInfo
+			);
+};
+
 void PreDrawSystem() {
 	UpdateAnimProgressSystem(registry.view<AnimProgress, const AnimParams>());
 	UpdateDrawPosSystem(registry.view<const Position, DrawPosition>(entt::exclude<Speed>));
@@ -529,6 +584,8 @@ void DrawSystem(const std::vector<std::pair<std::pair<float, float>, CProjectile
 			DrawCDirtProjectile(ent, registry);
 		} else if (registry.all_of<CExploSpikeProjectileTag>(ent)) {
 			DrawCExploSpikeProjectile(ent, registry);
+		} else if (registry.all_of<CHeatCloudProjectileTag>(ent)) {
+			DrawCHeatCloudProjectile(ent, registry);
 		}
 	});
 
@@ -536,4 +593,4 @@ void DrawSystem(const std::vector<std::pair<std::pair<float, float>, CProjectile
 		projIt->second->Draw();
 		++projIt;
 	}
-};
+}
