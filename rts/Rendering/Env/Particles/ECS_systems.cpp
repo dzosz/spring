@@ -490,7 +490,6 @@ static void DrawCExploSpikeProjectile(entt::entity ent, ViewT&& view)
 template <typename ViewT>
 static void DrawCHeatCloudProjectile(entt::entity ent, ViewT&& view) 
 {
-	LOG("draw CHeat");
 	auto& pos = view.template get<const Position>(ent).value;
 	auto& heat = view.template get<const Heat>(ent).v;
 	auto& maxheat = view.template get<const MaxHeat>(ent).v;
@@ -542,6 +541,69 @@ static void DrawCHeatCloudProjectile(entt::entity ent, ViewT&& view)
 			);
 };
 
+template <typename ViewT>
+static void DrawCMuzzleFlame(entt::entity ent, ViewT&& view) 
+{
+	auto& pos = view.template get<const Position>(ent).value;
+	auto& age = view.template get<const LifetimeFlame>(ent).v;
+	
+	//auto& drawPos = view.template get<const DrawPosition>(ent).value;
+	auto& animParams = view.template get<const AnimParams>(ent);
+	auto& animProgress = view.template get<const AnimProgress>(ent);
+	float3 animInfo = { animParams.value.x, animParams.value.y, animProgress.value };
+
+	auto& size = view.template get<const Sized>(ent).value;
+	auto& dir = view.template get<const Direction>(ent).value;
+	
+	auto& a = view.template get<const ParticleIndex>(ent).v;
+	
+	unsigned char col[4];
+	float alpha = std::max(0.0f, 1 - (age / (4 + size * 30)));
+	float modAge = fastmath::apxsqrt(static_cast<float>(age + 2));
+
+	const int tex = a % projectileDrawer->NumSmokeTextures();
+	// float xmod = 0.125f + (float(int(tex % 6))) / 16.0f;
+	// float ymod =                (int(tex / 6))  / 16.0f;
+
+	float drawsize = modAge * 3;
+	float3 interPos(pos+dir*(a+2)*modAge*0.4f);
+	float fade = std::max(0.0f, std::min(1.0f, (1 - alpha) * (20 + a) * 0.1f));
+
+	col[0] = (unsigned char) (180 * alpha * fade);
+	col[1] = (unsigned char) (180 * alpha * fade);
+	col[2] = (unsigned char) (180 * alpha * fade);
+	col[3] = (unsigned char) (255 * alpha * fade);
+
+	#define st projectileDrawer->GetSmokeTexture(tex)
+	AddEffectsQuad(
+		{ interPos - camera->GetRight() * drawsize - camera->GetUp() * drawsize, st->xstart, st->ystart, col },
+		{ interPos + camera->GetRight() * drawsize - camera->GetUp() * drawsize, st->xend,   st->ystart, col },
+		{ interPos + camera->GetRight() * drawsize + camera->GetUp() * drawsize, st->xend,   st->yend,   col },
+		{ interPos - camera->GetRight() * drawsize + camera->GetUp() * drawsize, st->xstart, st->yend,   col },
+		animInfo
+	);
+	#undef st
+
+	if (fade < 1.0f) {
+		float ifade = 1.0f - fade;
+		col[0] = (unsigned char) (ifade * 255);
+		col[1] = (unsigned char) (ifade * 255);
+		col[2] = (unsigned char) (ifade * 255);
+		col[3] = (unsigned char) (1);
+
+		#define mft projectileDrawer->muzzleflametex
+		AddEffectsQuad(
+			{ interPos - camera->GetRight() * drawsize - camera->GetUp() * drawsize, mft->xstart, mft->ystart, col },
+			{ interPos + camera->GetRight() * drawsize - camera->GetUp() * drawsize, mft->xend,   mft->ystart, col },
+			{ interPos + camera->GetRight() * drawsize + camera->GetUp() * drawsize, mft->xend,   mft->yend,   col },
+			{ interPos - camera->GetRight() * drawsize + camera->GetUp() * drawsize, mft->xstart, mft->yend,   col },
+			animInfo
+		);
+		#undef mft
+	}
+}
+
+
 void PreDrawSystem() {
 	UpdateAnimProgressSystem(registry.view<AnimProgress, const AnimParams>());
 	UpdateDrawPosSystem(registry.view<const Position, DrawPosition>(entt::exclude<Speed>));
@@ -576,6 +638,7 @@ void DrawSystem(const std::vector<std::pair<std::pair<float, float>, CProjectile
 			return;
 
 		// TODO this dispatch uses registry instead view so it's slower TODO benchmark
+		// maybe do Draw() calculation in thread pools to thread local vector, then sort and then pass to render buffer?
 		if (registry.all_of<SimpleParticleSystemTag>(ent)) {
 			DrawSimpleParticleSystem(ent, registry);
 		} else if (registry.all_of<CBitmapMuzzleFlameTag>(ent)) {
@@ -586,6 +649,8 @@ void DrawSystem(const std::vector<std::pair<std::pair<float, float>, CProjectile
 			DrawCExploSpikeProjectile(ent, registry);
 		} else if (registry.all_of<CHeatCloudProjectileTag>(ent)) {
 			DrawCHeatCloudProjectile(ent, registry);
+		} else if (registry.all_of<CMuzzleFlameTag>(ent)) {
+			DrawCMuzzleFlame(ent, registry);
 		}
 	});
 

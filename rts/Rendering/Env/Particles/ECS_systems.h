@@ -42,6 +42,14 @@ inline void LifetimeAlphaSystem(entt::registry& reg) {
 	});
 }
 
+inline void LifetimeFlameSystem(entt::registry& reg) {
+	reg.view<LifetimeFlame, const Sized>().each([&](const auto ent, auto& l, const auto& d) {
+		l.v++;
+		if (l.v > 4+ d.value * 30)
+			reg.emplace_or_replace<Destroyed>(ent);
+	});
+}
+
 void LifetimePositionAboveGroundSystem(entt::registry& reg);
 
 inline void DeleteDestroyedSystem(entt::registry& reg) {

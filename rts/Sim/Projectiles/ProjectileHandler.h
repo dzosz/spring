@@ -26,6 +26,7 @@ struct CBitmapMuzzleFlame;
 struct CDirtProjectile;
 struct CExploSpikeProjectile;
 struct CHeatCloudProjectile;
+struct CMuzzleFlame;
 
 typedef std::vector<CGroundFlash*> GroundFlashContainer;
 typedef std::vector<FlyingPiece> FlyingPieceContainer;
@@ -91,6 +92,7 @@ public:
 	void AddECSProjectile(CDirtProjectile* proj);
 	void AddECSProjectile(CExploSpikeProjectile* proj);
 	void AddECSProjectile(CHeatCloudProjectile* proj);
+	void AddECSProjectile(CMuzzleFlame* proj);
 
 public:
 	int maxParticles = 0;

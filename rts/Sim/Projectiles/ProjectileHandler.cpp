@@ -39,6 +39,7 @@
 #include "Rendering/Env/Particles/Classes/DirtProjectile.h"
 #include "Rendering/Env/Particles/Classes/ExploSpikeProjectile.h"
 #include "Rendering/Env/Particles/Classes/HeatCloudProjectile.h"
+#include "Rendering/Env/Particles/Classes/MuzzleFlame.h"
 #include <typeindex>
 
 // reserve 5% of maxNanoParticles for important stuff such as capture and reclaim other teams' units
@@ -93,6 +94,7 @@ static void createECSTaskGraph() {
 	ecsTaskList.emplace<&LifetimePositionAboveGroundSystem>();
 	ecsTaskList.emplace<&LifetimeAlphaSystem>();
 	ecsTaskList.emplace<&LifetimeHeatSystem>();
+	ecsTaskList.emplace<&LifetimeFlameSystem>();
 	ecsTaskList.emplace<&DeleteDestroyedSystem>();
 
 	ecsTaskList.emplace<&PositionSystem>();
@@ -240,6 +242,33 @@ void CProjectileHandler::AddECSProjectile(CHeatCloudProjectile* proj)
 	registry.emplace<AnimParams>(ent, proj->animParams, proj->createFrame);
 }
 
+void CProjectileHandler::AddECSProjectile(CMuzzleFlame* proj)
+{
+	auto ent = registry.create();
+	for (int i =0; i < proj->numSmoke; ++i) {
+		registry.emplace<CMuzzleFlameTag>(ent);
+		
+		registry.emplace<DrawRadius>(ent, proj->drawRadius);
+		registry.emplace<DrawPosition>(ent, proj->drawPos);
+		registry.emplace<DrawOrder>(ent, proj->drawOrder, 0.0f);
+		registry.emplace<AlliedTeam>(ent, proj->allyteamID);
+		
+		//registry.emplace<Rotation>(ent, proj->rotVal, proj->rotVel);
+		registry.emplace<Direction>(ent, proj->randSmokeDir[i]);
+		
+		registry.emplace<Position>(ent, proj->pos);
+		registry.emplace<Speed>(ent, proj->speed);
+		
+		registry.emplace<LifetimeFlame>(ent, proj->age);
+		registry.emplace<Sized>(ent, proj->size);
+		
+		registry.emplace<AnimProgress>(ent, 0.0f);
+		registry.emplace<AnimParams>(ent, proj->animParams, proj->createFrame);
+		
+		registry.emplace<ParticleIndex>(ent, i);
+	}
+}
+
 // COMMENT this approach can already be merged to master as it provides safety to projectiles container.
 // It avoids duplicated iteration over projectiles[synced] containers
 // and gives control when exactly to Update() new particles
@@ -312,6 +341,10 @@ void CProjectileHandler::Init()
 	
 	ecsSpawner[std::type_index(typeid(CHeatCloudProjectile))] = [&](CProjectile* p) {
 		AddECSProjectile(static_cast<CHeatCloudProjectile*>(p));
+	};
+	
+	ecsSpawner[std::type_index(typeid(CMuzzleFlame))] = [&](CProjectile* p) {
+		AddECSProjectile(static_cast<CMuzzleFlame*>(p));
 	};
 	
 	createECSTaskGraph();

@@ -21,6 +21,10 @@ struct DrawPosition {
 	float3 value;
 };
 
+struct ParticleIndex {
+	unsigned v;
+};
+
 struct DrawOrder {
 	float drawOrder;
 	float distanceFromCamera; // should be negative as we want to draw far object first
@@ -49,6 +53,10 @@ struct Lifetime {
 
 struct Decayrate {
 	float value;
+};
+
+struct LifetimeFlame {
+	float v;
 };
 
 struct Heat {
@@ -139,6 +147,7 @@ struct CBitmapMuzzleFlameTag {};
 struct CDirtProjectileTag {};
 struct CExploSpikeProjectileTag{};
 struct CHeatCloudProjectileTag{};
+struct CMuzzleFlameTag{};
 
 // System behavior Tags
 struct GroundCollisionTag {};
