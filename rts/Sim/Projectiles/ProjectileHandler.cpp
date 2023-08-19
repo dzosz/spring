@@ -31,6 +31,7 @@
 #include "System/SpringMath.h"
 #include "System/TimeProfiler.h"
 #include "System/Threading/ThreadPool.h"
+#include "Rendering/Env/Particles/ProjectileDrawer.h"
 
 #include "lib/entt/entt.hpp"
 #include "Rendering/Env/Particles/ECS_systems.h"
@@ -40,6 +41,7 @@
 #include "Rendering/Env/Particles/Classes/ExploSpikeProjectile.h"
 #include "Rendering/Env/Particles/Classes/HeatCloudProjectile.h"
 #include "Rendering/Env/Particles/Classes/MuzzleFlame.h"
+#include "Rendering/Env/Particles/Classes/SmokeProjectile.h"
 #include <typeindex>
 
 // reserve 5% of maxNanoParticles for important stuff such as capture and reclaim other teams' units
@@ -79,6 +81,10 @@ static std::vector<CProjectile*> queuedProjectiles;
 static std::unordered_map<std::type_index, std::function<void(CProjectile*)>> ecsSpawner;
 
 bool isEcsProj(const CProjectile* pro) {
+
+	if (!dynamic_cast<const CSmokeProjectile*>(pro)) {
+		return true;
+	}
 	if (!ECS_MODE)
 		return false;
 	auto type_idx = std::type_index(typeid(*pro));
@@ -100,9 +106,12 @@ static void createECSTaskGraph() {
 	ecsTaskList.emplace<&PositionSystem>();
 	ecsTaskList.emplace<&SpeedParticlePhysSystem>();
 	// ecsTaskList.emplace<&RotationSystem>(); // done in Render() context?
+	ecsTaskList.emplace<&WindPositionSystem>();
+	
 	ecsTaskList.emplace<&GrowSizeSystem>();
 	ecsTaskList.emplace<&GrowLengthSystem>();
-
+	ecsTaskList.emplace<&GrowSmokeSizeSystem>();
+	
 	// preallocate pools
 	for(auto &&node: ecsTaskList.graph()) {
 		node.prepare(registry);
@@ -269,6 +278,35 @@ void CProjectileHandler::AddECSProjectile(CMuzzleFlame* proj)
 	}
 }
 
+void CProjectileHandler::AddECSProjectile(CSmokeProjectile* proj)
+{
+	auto ent = registry.create();
+	registry.emplace<CSmokeProjectileTag>(ent);
+	
+	registry.emplace<DrawRadius>(ent, proj->drawRadius);
+	registry.emplace<DrawPosition>(ent, proj->drawPos);
+	registry.emplace<DrawOrder>(ent, proj->drawOrder, 0.0f);
+	registry.emplace<AlliedTeam>(ent, proj->allyteamID);
+	
+	registry.emplace<Position>(ent, proj->pos);
+	registry.emplace<Speed>(ent, proj->speed);
+	
+	registry.emplace<Lifetime>(ent, proj->age);
+	registry.emplace<Decayrate>(ent, proj->ageSpeed);
+	registry.emplace<Sized>(ent, proj->size);
+	registry.emplace<SizeChange>(ent, 1.0, proj->sizeExpansion);
+	registry.emplace<SmokeSizeChange>(ent, proj->startSize);
+	
+	registry.emplace<PositionWindChangeTag>(ent);
+	
+	registry.emplace<AnimProgress>(ent, 0.0f);
+	registry.emplace<AnimParams>(ent, proj->animParams, proj->createFrame);
+	registry.emplace<Color>(ent, float3{proj->color, 0.0, 0.0});	
+
+	registry.emplace<RenderData>(ent, projectileDrawer->GetSmokeTexture(proj->textureNum), nullptr, nullptr, false);	
+}
+
+
 // COMMENT this approach can already be merged to master as it provides safety to projectiles container.
 // It avoids duplicated iteration over projectiles[synced] containers
 // and gives control when exactly to Update() new particles
@@ -345,6 +383,10 @@ void CProjectileHandler::Init()
 	
 	ecsSpawner[std::type_index(typeid(CMuzzleFlame))] = [&](CProjectile* p) {
 		AddECSProjectile(static_cast<CMuzzleFlame*>(p));
+	};
+
+	ecsSpawner[std::type_index(typeid(CSmokeProjectile))] = [&](CProjectile* p) {
+		AddECSProjectile(static_cast<CSmokeProjectile*>(p));
 	};
 	
 	createECSTaskGraph();

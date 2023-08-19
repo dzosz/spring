@@ -44,6 +44,7 @@ To do:
 
 #include "Sim/Misc/LosHandler.h"
 #include "Sim/Misc/TeamHandler.h"
+#include "Sim/Misc/Wind.h"
 
 #include "Game/Camera.h"
 #include "Game/CameraHandler.h"
@@ -239,6 +240,13 @@ void RotationSystem(entt::view<entt::get_t<Rotation, const RotParams, const Anim
 		// rotParams.y is acceleration in angle per frame^2
 		rot.rotVel = rotParams.value.x + rotParams.value.y * t;
 		rot.rotVal = rotParams.value.z + rot.rotVel      * t;
+	});
+}
+
+void WindPositionSystem(entt::view<entt::get_t<Position, const Lifetime, const PositionWindChangeTag>> view) {
+	auto& wind = envResHandler.GetCurrentWindVec();
+	view.each([&](auto& p, const auto& lifetime) {
+		p.value += (wind * lifetime.value * 0.05f);
 	});
 }
 
@@ -604,13 +612,54 @@ static void DrawCMuzzleFlame(entt::entity ent, ViewT&& view)
 }
 
 
+template <typename ViewT>
+static void DrawCSmokeProjectile(entt::entity ent, ViewT&& view) 
+{
+	auto& pos = view.template get<const Position>(ent).value;
+	auto& age = view.template get<const Lifetime>(ent).value;
+	auto& color = view.template get<const Color>(ent).v;
+	auto& size = view.template get<const Sized>(ent).value;
+	auto& sizeExpansion = view.template get<const SizeChange>(ent).sizeGrowth;
+	auto& drawPos = view.template get<const DrawPosition>(ent).value;
+	auto& st = view.template get<const RenderData>(ent).texture;
+	
+	auto& animParams = view.template get<const AnimParams>(ent);
+	auto& animProgress = view.template get<const AnimProgress>(ent);
+	float3 animInfo = { animParams.value.x, animParams.value.y, animProgress.value };
+
+	unsigned char col[4];
+	unsigned char alpha = (unsigned char) ((1 - age) * 255);
+	col[0] = (unsigned char) (color.x * alpha);
+	col[1] = (unsigned char) (color.x * alpha);
+	col[2] = (unsigned char) (color.x * alpha);
+	col[3] = (unsigned char) alpha/*-alphaFalloff*globalRendering->timeOffset*/;
+	//int frame=textureNum;
+	//float xmod=0.125f+(float(int(frame%6)))/16;
+	//float ymod=(int(frame/6))/16.0f;
+
+	const float interSize = size + (sizeExpansion * globalRendering->timeOffset);
+	const float3 pos1 ((camera->GetRight() - camera->GetUp()) * interSize);
+	const float3 pos2 ((camera->GetRight() + camera->GetUp()) * interSize);
+
+	AddEffectsQuad(
+		{ drawPos - pos2, st->xstart, st->ystart, col },
+		{ drawPos + pos1, st->xend,   st->ystart, col },
+		{ drawPos + pos2, st->xend,   st->yend,   col },
+		{ drawPos - pos1, st->xstart, st->yend,   col },
+		animInfo
+	);
+}
+
+
 void PreDrawSystem() {
 	UpdateAnimProgressSystem(registry.view<AnimProgress, const AnimParams>());
 	UpdateDrawPosSystem(registry.view<const Position, DrawPosition>(entt::exclude<Speed>));
-	UpdateDrawPosSpeedSystem(registry.view<const Position, const Speed, DrawPosition>());	
+	UpdateDrawPosSpeedSystem(registry.view<const Position, const Speed, DrawPosition>());
 	UpdateDrawOrder(registry.view<const DrawPosition, DrawOrder>());
 	RotationSystem(registry.view<Rotation, const RotParams, const AnimParams>());
+	// TODO add update DrawRadius
 }
+
 
 // Draws new ECS projectiles and legacy sortedProjectiles
 // this is a temporary compatible solution that respects drawing order and
@@ -651,6 +700,8 @@ void DrawSystem(const std::vector<std::pair<std::pair<float, float>, CProjectile
 			DrawCHeatCloudProjectile(ent, registry);
 		} else if (registry.all_of<CMuzzleFlameTag>(ent)) {
 			DrawCMuzzleFlame(ent, registry);
+		} else if (registry.all_of<CSmokeProjectileTag>(ent)) {
+			DrawCSmokeProjectile(ent, registry);
 		}
 	});
 

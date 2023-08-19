@@ -118,6 +118,10 @@ struct LengthChange {
 	float v;
 };
 
+struct SmokeSizeChange {
+	float v;
+};
+
 struct Width {
 	float value;
 };
@@ -131,7 +135,7 @@ struct FrontOffset {
 class AtlasedTexture;
 class CColorMap;
 struct RenderData {
-	AtlasedTexture* texture;
+	const AtlasedTexture* texture;
 	AtlasedTexture* extraTexture; // sideTexture?
 	CColorMap* colorMap;
 	bool directional;
@@ -148,7 +152,10 @@ struct CDirtProjectileTag {};
 struct CExploSpikeProjectileTag{};
 struct CHeatCloudProjectileTag{};
 struct CMuzzleFlameTag{};
+struct CSmokeProjectileTag{};
+
 
 // System behavior Tags
 struct GroundCollisionTag {};
 struct Destroyed {};
+struct PositionWindChangeTag{};

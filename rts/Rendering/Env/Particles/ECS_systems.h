@@ -50,6 +50,14 @@ inline void LifetimeFlameSystem(entt::registry& reg) {
 	});
 }
 
+inline void GrowSmokeSizeSystem(entt::view<entt::get_t<Sized, const SmokeSizeChange>> view) {
+	view.each([&](auto ent, auto& s, const auto& smokeSize) {
+		auto startSize = smokeSize.v;
+		auto size = s.value;
+		s.value += (startSize - size) * 0.2f * (size < startSize);
+	});
+}
+
 void LifetimePositionAboveGroundSystem(entt::registry& reg);
 
 inline void DeleteDestroyedSystem(entt::registry& reg) {
@@ -63,6 +71,7 @@ inline void PositionSystem(entt::view<entt::get_t<Position, const Speed>> view) 
 	});
 }
 
+void WindPositionSystem(entt::view<entt::get_t<Position, const Lifetime, const PositionWindChangeTag>> view);
 
 inline void SpeedParticlePhysSystem(entt::view<entt::get_t<Speed, const ParticlePhys>> view) {
 	view.each([&](const auto ent, auto& s, const auto& phys) {

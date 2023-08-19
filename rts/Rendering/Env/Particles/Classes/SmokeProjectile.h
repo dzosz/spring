@@ -10,6 +10,7 @@ class CUnit;
 
 class CSmokeProjectile : public CProjectile
 {
+	friend class CProjectileHandler;
 	CR_DECLARE_DERIVED(CSmokeProjectile)
 
 public:
