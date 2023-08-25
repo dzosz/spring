@@ -226,7 +226,7 @@ void UpdateAnimProgressSystem(entt::view<entt::get_t<AnimProgress, const AnimPar
 } // unnamed namespace
 
 void LifetimePositionAboveGroundSystem(entt::registry& reg) {
-	reg.view<const Position, GroundCollisionTag>().each([&](const auto ent, auto& pos) {
+	reg.view<const GroundCollisionTag, const Position>().each([&](const auto ent, auto& pos) {
 		if(CGround::GetApproximateHeight(pos.value.x, pos.value.z, false) - 40.0f > pos.value.y) {
 			registry.emplace_or_replace<Destroyed>(ent);
 		}
@@ -243,7 +243,7 @@ void RotationSystem(entt::view<entt::get_t<Rotation, const RotParams, const Anim
 	});
 }
 
-void WindPositionSystem(entt::view<entt::get_t<Position, const Lifetime, const PositionWindChangeTag>> view) {
+void WindPositionSystem(entt::view<entt::get_t<const PositionWindChangeTag, Position, const Lifetime>> view) {
 	auto& wind = envResHandler.GetCurrentWindVec();
 	view.each([&](auto& p, const auto& lifetime) {
 		p.value += (wind * lifetime.value * 0.05f);
@@ -275,22 +275,6 @@ static bool isParticleVisible(const Position& pos, const DrawPosition& drawPos,
 		return false;
 
 	return true;
-}
-
-static void DrawClass(SimpleParticleSystemTag)
-{
-	auto view = registry.view<SimpleParticleSystemTag, const Position, const DrawPosition,
-			const DrawRadius, const AlliedTeam, const Speed, const Sized, const Lifetime,
-			const RenderData, const Rotation, const AnimParams, const AnimProgress>();
-	for (auto ent : view) {
-		 const auto& pos = view.get<const Position>(ent);
-		 const auto& drawPos = view.get<const DrawPosition>(ent);
-		 const auto& drawRadius = view.get<const DrawRadius>(ent);
-		 const auto& allyteam = view.get<const AlliedTeam>(ent);
-		if (!isParticleVisible(pos, drawPos, drawRadius, allyteam)) 
-			continue;
-		DrawSimpleParticleSystem(ent, view);
-	}
 }
 
 template <typename ViewT>
@@ -380,25 +364,6 @@ static void DrawCBitmapMuzzleFlame(entt::entity ent, ViewT&& view)
 	}
 }
 
-static void DrawClass(CBitmapMuzzleFlameTag)
-{
-	auto view = registry.view<CBitmapMuzzleFlameTag, const Position, const DrawPosition,
-			DrawRadius, const AlliedTeam, const Decayrate, const Lifetime, const LifetimeSizeChange,
-			const Sized, const Length, const RenderData, const FrontOffset, const Direction,
-			const Rotation, const AnimParams, const AnimProgress
-			>();
-	for (auto ent : view) {
-		auto& pos = view.get<Position>(ent);
-		auto& drawPos = view.get<DrawPosition>(ent);
-		auto& drawRadius = view.get<DrawRadius>(ent);
-		auto& allyteam = view.get<AlliedTeam>(ent);
-		if (!isParticleVisible(pos, drawPos, drawRadius, allyteam))
-			continue;
-
-		DrawCBitmapMuzzleFlame(ent, view);
-	};
-}
-
 template <typename ViewT>
 static void DrawCDirtProjectile(entt::entity ent, ViewT&& view) 
 {
@@ -438,22 +403,6 @@ static void DrawCDirtProjectile(entt::entity ent, ViewT&& view)
 	);
 }
 
-void DrawClass(CDirtProjectileTag)
-{
-	auto view = registry.view<CDirtProjectileTag, const Position, const DrawPosition, const DrawRadius, const AlliedTeam,
-			const SizeChange, const Sized, const RenderData, const Color, const Alpha,
-			const AnimParams, const AnimProgress
-			>();
-	for (auto ent : view) {
-		auto& pos = view.get<Position>(ent);
-		auto& drawPos = view.get<DrawPosition>(ent);
-		auto& drawRadius = view.get<DrawRadius>(ent);
-		auto& allyteam = view.get<AlliedTeam>(ent);
-		if (!isParticleVisible(pos, drawPos, drawRadius, allyteam))
-			continue;
-		DrawCDirtProjectile(ent, view);
-	};
-}
 template <typename ViewT>
 static void DrawCExploSpikeProjectile(entt::entity ent, ViewT&& view) 
 {
