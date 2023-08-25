@@ -636,7 +636,7 @@ void CProjectileDrawer::DrawProjectileNow(CProjectile* pro, bool drawReflection,
 	DrawProjectileModel(pro);
 	
 	if (drawSorted && pro->drawSorted) {
-		float drawOrder = pro->drawOrder;		
+		int drawOrder = pro->drawOrder;		
 		pro->SetSortDist(cam->ProjectedDistance(pro->pos));
 		float sortDist = pro->sortDist;
 		sortedProjectiles.emplace_back(std::pair{std::pair{drawOrder, -sortDist}, pro});
