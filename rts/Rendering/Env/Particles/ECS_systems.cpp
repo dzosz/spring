@@ -3,13 +3,13 @@ ECS checklist:
 
 Done:
 * Runtime switch for ECS MODE (you can pause the game, switch the mode to observe the difference)
-* Migrated SimpleParticleProjectile to ECS
-* Migrated CBitmapMuzzleFlame to ECS
-* Migrated CDirtProjectile to ECS
-* Created graph (organizer) for parallel execution of ECS tasks
-* Parallel Projectiles::Sim() calculation
+* Migrated types projectiles to ECS:
+  SimpleParticleProjectile CBitmapMuzzleFlame CDirtProjectile CExploSpikeProjectileTag
+  CBitmapMuzzleFlameTag CDirtProjectileTag CHeatCloudProjectileTag CMuzzleFlameTag
+  CSmokeProjectileTag CSmokeTrailProjectileTag
 * Thread safety for both legacy and ECS projectiles in explosion generator
 * Projectile drawing & sorting based on draw distance (integrated with existing synced projectiles)
+* Shadow drawing
 
 To do:
 * Make clear distinction what should be computed in Sim() and what in Draw() contexts.
@@ -18,12 +18,10 @@ To do:
   after hitting the ground so I guess it needs to be updated in Sim() ?
 * Improve approach to Drawing. For now the drawing functions were copied over from legacy classes.
   What is the fastest way to draw visible projectiles? 
-* Resolve issue with drawing being slower than legacy
-* Resolve issue with Sim::update() being slower than legacy
 * Create new Spawner class (see explosion generator) that doesn't require legacy Particles to exist
   (currently ECS particles copy out data from original Particles, then deallocates them)
-* Add minimap and shadow drawing for ECS particles
-* Add global los to ECS components
+* Add minimap drawing for ECS particles
+* Parallel executor on task graph
 
 */
 #include "ECS_systems.h"
@@ -250,17 +248,22 @@ void WindPositionSystem(entt::view<entt::get_t<const PositionWindChangeTag, Posi
 	});
 }
 
-static bool CanDrawProjectile(const Position& pos, const AlliedTeam& allyTeam)
+static bool CanDrawProjectile(const Position& pos, const AlliedTeam& allyTeam,
+							  const bool isAirLos)
 {
 	auto& th = teamHandler;
 	auto& lh = losHandler;
-	return (gu->spectatingFullView || (th.IsValidAllyTeam(allyTeam.value) && th.Ally(allyTeam.value, gu->myAllyTeam)) || lh->InLos(pos.value, gu->myAllyTeam)); // FIXME it uses wrong InLos() override
+	return (gu->spectatingFullView ||
+			(th.IsValidAllyTeam(allyTeam.value) && th.Ally(allyTeam.value, gu->myAllyTeam))
+			|| lh->InLos(pos.value, gu->myAllyTeam)
+			|| (isAirLos && lh->InAirLos(pos.value, allyTeam.value)));
 }
 
 static bool isParticleVisible(const Position& pos, const DrawPosition& drawPos,
-							  const DrawRadius& drawRadius, const AlliedTeam& allyteam)
+							  const DrawRadius& drawRadius, const AlliedTeam& allyteam,
+							  const bool isAirLos)
 {
-	if (!CanDrawProjectile(pos, allyteam))
+	if (!CanDrawProjectile(pos, allyteam, isAirLos))
 		return false;
 
 	bool drawRefraction = false; // TODO
@@ -693,8 +696,9 @@ static void DispatchDrawingECS(entt::entity ent, ViewT&& view) {
 	auto& drawPos = registry.get<DrawPosition>(ent);
 	auto& drawRadius = registry.get<DrawRadius>(ent);
 	auto& allyteam = registry.get<AlliedTeam>(ent);
+	bool isAirLos = registry.all_of<AirLosTag>(ent);
 	// TODO figure out fastest way for dispatching. maybe add entt::observer and check proj visibility in system?	
-	if (!isParticleVisible(pos, drawPos, drawRadius, allyteam))
+	if (!isParticleVisible(pos, drawPos, drawRadius, allyteam, isAirLos))
 		return;
 
 	if (registry.all_of<SimpleParticleSystemTag>(ent)) {

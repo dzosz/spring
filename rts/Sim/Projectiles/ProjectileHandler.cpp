@@ -158,6 +158,8 @@ void CProjectileHandler::AddECSProjectile(CSimpleParticleSystem* proj) {
 void CProjectileHandler::AddECSProjectile(CBitmapMuzzleFlame* proj) {
 	auto ent = registry.create();
 	registry.emplace<CBitmapMuzzleFlameTag>(ent);
+	registry.emplace<AirLosTag>(ent);
+	
 	registry.emplace<FrontOffset>(ent, proj->frontOffset); // BitmapMuzzleFlameSpecific
 	registry.emplace<DrawRadius>(ent, proj->drawRadius);
 	registry.emplace<DrawPosition>(ent, proj->drawPos);
@@ -203,7 +205,8 @@ void CProjectileHandler::AddECSProjectile(CDirtProjectile* proj) {
 
 void CProjectileHandler::AddECSProjectile(CExploSpikeProjectile* proj) {
 	auto ent = registry.create();
-	registry.emplace<CExploSpikeProjectileTag>(ent);	
+	registry.emplace<CExploSpikeProjectileTag>(ent);
+	registry.emplace<AirLosTag>(ent);
 
 	registry.emplace<DrawRadius>(ent, proj->drawRadius);
 	registry.emplace<DrawPosition>(ent, proj->drawPos);
@@ -227,6 +230,7 @@ void CProjectileHandler::AddECSProjectile(CHeatCloudProjectile* proj)
 {
 	auto ent = registry.create();
 	registry.emplace<CHeatCloudProjectileTag>(ent);
+	registry.emplace<AirLosTag>(ent);
 	
 	registry.emplace<DrawRadius>(ent, proj->drawRadius);
 	registry.emplace<DrawPosition>(ent, proj->drawPos);
@@ -281,6 +285,7 @@ void CProjectileHandler::AddECSProjectile(CSmokeProjectile* proj)
 {
 	auto ent = registry.create();
 	registry.emplace<CSmokeProjectileTag>(ent);
+	registry.emplace<AirLosTag>(ent);
 	if (proj->castShadow) {
 		registry.emplace<CastShadowTag>(ent);
 	};
@@ -317,6 +322,7 @@ void CProjectileHandler::AddECSProjectile(CSmokeTrailProjectile* proj)
 		throw 130;
 	}
 	registry.emplace<CSmokeTrailProjectileTag>(ent);
+	registry.emplace<AirLosTag>(ent);
 	
 	registry.emplace<DrawRadius>(ent, proj->drawRadius);
 	registry.emplace<DrawPosition>(ent, proj->drawPos);

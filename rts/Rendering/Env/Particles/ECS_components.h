@@ -172,10 +172,12 @@ struct CHeatCloudProjectileTag{};
 struct CMuzzleFlameTag{};
 struct CSmokeProjectileTag{};
 struct CSmokeTrailProjectileTag{};
-struct CastShadowTag{};
 
 
 // System behavior Tags
 struct GroundCollisionTag {};
 struct Destroyed {};
 struct PositionWindChangeTag{};
+struct CastShadowTag{};
+struct AirLosTag{};
+
