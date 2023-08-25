@@ -5,7 +5,14 @@
 #include "lib/entt/fwd.hpp"
 #include "lib/entt/entity/registry.hpp"
 #include "System/SpringMath.h"
-	
+
+static void DestroyEnt(entt::entity ent, entt::registry& reg) {
+	if (true) {
+		reg.emplace_or_replace<Destroyed>(ent);
+	} else {
+		reg.destroy(ent);
+	}
+}
 inline void GrowSizeSystem(entt::view<entt::get_t<Sized, const SizeChange>> view) {
 	// TODO optionally multiply by timeOffset if executed in Draw context
 	view.each([&](auto ent, auto& size, const auto& sizeChange) {
@@ -23,7 +30,7 @@ inline void LifetimeSystem(entt::registry& reg) {
 	reg.view<Lifetime, const Decayrate>().each([&](const auto ent, auto& l, const auto& d) {
 		l.value += d.value;
 		if (l.value >= 1.0)
-			reg.emplace_or_replace<Destroyed>(ent);
+			DestroyEnt(ent, reg);
 	});
 }
 
@@ -31,7 +38,7 @@ inline void LifetimeHeatSystem(entt::registry& reg) {
 	reg.view<Heat, const HeatDecay>().each([&](const auto ent, auto& h, const auto& r) {
 		h.v -= r.v;
 		if (h.v <= 0.0)
-			reg.emplace_or_replace<Destroyed>(ent);
+			DestroyEnt(ent, reg);
 	});
 }
 
@@ -39,7 +46,7 @@ inline void LifetimeAlphaSystem(entt::registry& reg) {
 	reg.view<Alpha, const AlphaDecayrate>().each([&](const auto ent, auto& l, const auto& d) {
 		l.v -= d.v;
 		if (l.v <= 0.0)
-			reg.emplace_or_replace<Destroyed>(ent);
+			DestroyEnt(ent, reg);
 	});
 }
 
@@ -47,7 +54,7 @@ inline void LifetimeFlameSystem(entt::registry& reg) {
 	reg.view<LifetimeFlame, const Sized>().each([&](const auto ent, auto& l, const auto& d) {
 		l.v++;
 		if (l.v > 4+ d.value * 30)
-			reg.emplace_or_replace<Destroyed>(ent);
+			DestroyEnt(ent, reg);
 	});
 }
 
@@ -122,3 +129,4 @@ inline bool UpdateEndPos(unsigned int entId, float3 p, float3 dir)
 class CProjectile;
 void PreDrawSystem();
 void DrawSystem(const std::vector<std::pair<std::pair<int, float>, CProjectile*>>&);
+void DrawShadowSystem();

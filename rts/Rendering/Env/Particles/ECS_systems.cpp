@@ -228,7 +228,7 @@ void UpdateAnimProgressSystem(entt::view<entt::get_t<AnimProgress, const AnimPar
 void LifetimePositionAboveGroundSystem(entt::registry& reg) {
 	reg.view<const GroundCollisionTag, const Position>().each([&](const auto ent, auto& pos) {
 		if(CGround::GetApproximateHeight(pos.value.x, pos.value.z, false) - 40.0f > pos.value.y) {
-			registry.emplace_or_replace<Destroyed>(ent);
+			DestroyEnt(ent, reg);
 		}
 	});
 }
@@ -602,7 +602,6 @@ static void DrawCSmokeProjectile(entt::entity ent, ViewT&& view)
 template <typename ViewT>
 static void DrawCSmokeTrailProjectile(entt::entity ent, ViewT&& view) 
 {
-	LOG("Draw DrawCSmokeTrailProjectile");
 	auto& lifeTime = view.template get<const Lifetime>(ent).value;
 	auto& decay = view.template get<const Decayrate>(ent).value;
 	auto& d = view.template get<const SmokeTrail>(ent);
@@ -688,13 +687,41 @@ void PreDrawSystem() {
 	// TODO add update DrawRadius
 }
 
+template <typename ViewT>
+static void DispatchDrawingECS(entt::entity ent, ViewT&& view) {
+	auto& pos = registry.get<Position>(ent);
+	auto& drawPos = registry.get<DrawPosition>(ent);
+	auto& drawRadius = registry.get<DrawRadius>(ent);
+	auto& allyteam = registry.get<AlliedTeam>(ent);
+	// TODO figure out fastest way for dispatching. maybe add entt::observer and check proj visibility in system?	
+	if (!isParticleVisible(pos, drawPos, drawRadius, allyteam))
+		return;
+
+	if (registry.all_of<SimpleParticleSystemTag>(ent)) {
+		DrawSimpleParticleSystem(ent, registry);
+	} else if (registry.all_of<CBitmapMuzzleFlameTag>(ent)) {
+		DrawCBitmapMuzzleFlame(ent, registry);
+	} else if (registry.all_of<CDirtProjectileTag>(ent)) {
+		DrawCDirtProjectile(ent, registry);
+	} else if (registry.all_of<CExploSpikeProjectileTag>(ent)) {
+		DrawCExploSpikeProjectile(ent, registry);
+	} else if (registry.all_of<CHeatCloudProjectileTag>(ent)) {
+		DrawCHeatCloudProjectile(ent, registry);
+	} else if (registry.all_of<CMuzzleFlameTag>(ent)) {
+		DrawCMuzzleFlame(ent, registry);
+	} else if (registry.all_of<CSmokeProjectileTag>(ent)) {
+		DrawCSmokeProjectile(ent, registry);
+	} else if (registry.all_of<CSmokeTrailProjectileTag>(ent)) {
+		DrawCSmokeTrailProjectile(ent, registry);
+	}
+}
 
 // Draws new ECS projectiles and legacy sortedProjectiles
 // this is a temporary compatible solution that respects drawing order and
 // prevents any graphical artifacts when drawing mixed ECS and legacy OOP projectiles
 // this approach uses runtime look up of the components type
 void DrawSystem(const std::vector<std::pair<std::pair<int, float>, CProjectile*>>& sortedProj)
-{ // TODO figure out fastest way for dispatching. maybe add entt::observer and check proj visibility first?	
+{
 	registry.sort<DrawOrder>([](const auto &lhs, const auto &rhs) {
 		return std::pair(lhs.drawOrder, lhs.distanceFromCamera) < std::pair(rhs.drawOrder, rhs.distanceFromCamera);
 	}); 
@@ -707,36 +734,18 @@ void DrawSystem(const std::vector<std::pair<std::pair<int, float>, CProjectile*>
 			++projIt;
 		}
 
-		auto& pos = registry.get<Position>(ent);
-		auto& drawPos = registry.get<DrawPosition>(ent);
-		auto& drawRadius = registry.get<DrawRadius>(ent);
-		auto& allyteam = registry.get<AlliedTeam>(ent);
-		if (!isParticleVisible(pos, drawPos, drawRadius, allyteam))
-			return;
-
-		// TODO this dispatch uses registry instead view so it's slower TODO benchmark
-		// maybe do Draw() calculation in thread pools to thread local vector, then sort and then pass to render buffer?
-		if (registry.all_of<SimpleParticleSystemTag>(ent)) {
-			DrawSimpleParticleSystem(ent, registry);
-		} else if (registry.all_of<CBitmapMuzzleFlameTag>(ent)) {
-			DrawCBitmapMuzzleFlame(ent, registry);
-		} else if (registry.all_of<CDirtProjectileTag>(ent)) {
-			DrawCDirtProjectile(ent, registry);
-		} else if (registry.all_of<CExploSpikeProjectileTag>(ent)) {
-			DrawCExploSpikeProjectile(ent, registry);
-		} else if (registry.all_of<CHeatCloudProjectileTag>(ent)) {
-			DrawCHeatCloudProjectile(ent, registry);
-		} else if (registry.all_of<CMuzzleFlameTag>(ent)) {
-			DrawCMuzzleFlame(ent, registry);
-		} else if (registry.all_of<CSmokeProjectileTag>(ent)) {
-			DrawCSmokeProjectile(ent, registry);
-		} else if (registry.all_of<CSmokeTrailProjectileTag>(ent)) {
-			DrawCSmokeTrailProjectile(ent, registry);
-		}
+		DispatchDrawingECS(ent, registry);
 	});
 
 	while (projIt != sortedProj.end()) {
 		projIt->second->Draw();
 		++projIt;
 	}
+}
+
+void DrawShadowSystem()
+{
+	registry.view<const CastShadowTag>().each([&](auto ent) {
+		DispatchDrawingECS(ent, registry);
+	});
 }

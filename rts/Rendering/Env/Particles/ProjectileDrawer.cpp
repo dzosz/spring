@@ -906,6 +906,7 @@ void CProjectileDrawer::DrawShadowPassTransparent()
 	// 1) Render opaque objects into depth stencil texture from light's point of view - done elsewhere
 
 	// draw the model-less projectiles
+	DrawShadowSystem(); 
 	DrawProjectilesSetShadow(modellessProjectiles);
 
 	auto& rb = CExpGenSpawnable::GetPrimaryRenderBuffer();

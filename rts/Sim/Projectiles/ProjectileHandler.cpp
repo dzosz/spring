@@ -254,6 +254,7 @@ void CProjectileHandler::AddECSProjectile(CMuzzleFlame* proj)
 	auto ent = registry.create();
 	for (int i =0; i < proj->numSmoke; ++i) {
 		registry.emplace<CMuzzleFlameTag>(ent);
+		registry.emplace<CastShadowTag>(ent);
 		
 		registry.emplace<DrawRadius>(ent, proj->drawRadius);
 		registry.emplace<DrawPosition>(ent, proj->drawPos);
@@ -280,6 +281,9 @@ void CProjectileHandler::AddECSProjectile(CSmokeProjectile* proj)
 {
 	auto ent = registry.create();
 	registry.emplace<CSmokeProjectileTag>(ent);
+	if (proj->castShadow) {
+		registry.emplace<CastShadowTag>(ent);
+	};
 	
 	registry.emplace<DrawRadius>(ent, proj->drawRadius);
 	registry.emplace<DrawPosition>(ent, proj->drawPos);
