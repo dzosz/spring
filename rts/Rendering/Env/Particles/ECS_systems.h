@@ -4,6 +4,7 @@
 #include "lib/entt/entity/view.hpp"
 #include "lib/entt/fwd.hpp"
 #include "lib/entt/entity/registry.hpp"
+#include "System/SpringMath.h"
 	
 inline void GrowSizeSystem(entt::view<entt::get_t<Sized, const SizeChange>> view) {
 	// TODO optionally multiply by timeOffset if executed in Draw context
@@ -82,6 +83,42 @@ inline void SpeedParticlePhysSystem(entt::view<entt::get_t<Speed, const Particle
 
 void RotationSystem(entt::view<entt::get_t<Rotation, const RotParams, const AnimParams>> view);
 
+extern entt::registry registry;
+inline bool UpdateEndPos(unsigned int entId, float3 p, float3 dir)
+{
+	auto ent = entt::entity(entId);
+	auto& view = registry;
+	if (!registry.valid(ent)) {
+		return false;
+	}
+	
+	auto& position = view.template get<Position>(ent).value;
+	
+	auto& drawRadius = view.template get<DrawRadius>(ent).value;
+	
+	auto& d = view.template get<SmokeTrail>(ent);
+	
+	d.pos1 = p;
+	d.dir1 = dir;
+
+	const float dist = d.pos1.distance(d.pos2);
+
+	d.drawSegmented = false;
+	position = (d.pos1 + d.pos2) * 0.5f;
+	
+	drawRadius = dist;
+	//TODO sortDistOffset = 10.f + dist * 0.5f; // so that missile's engine flame gets rendered above the trail
+
+	if (d.dir1.dot(d.dir2) < 0.98f) {
+		float3 dirpos1 = d.pos1 - d.dir1 * dist * 0.33f;
+		float3 dirpos2 = d.pos2 + d.dir2 * dist * 0.33f;
+		d.midpos = CalcBeizer(0.5f, d.pos1, dirpos1, dirpos2, d.pos2);
+		d.middir = (d.dir1 + d.dir2).ANormalize();
+		d.drawSegmented = true;
+	}
+	return true;
+}
+
 class CProjectile;
 void PreDrawSystem();
-void DrawSystem(const std::vector<std::pair<std::pair<float, float>, CProjectile*>>&);
+void DrawSystem(const std::vector<std::pair<std::pair<int, float>, CProjectile*>>&);

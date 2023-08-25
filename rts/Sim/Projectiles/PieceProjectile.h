@@ -72,6 +72,7 @@ public:
 	float3 oldSmokePos;
 	float3 oldSmokeDir;
 	CSmokeTrailProjectile* smokeTrail;
+	unsigned int ent=0;
 };
 
 #endif /* PIECE_PROJECTILE_H */

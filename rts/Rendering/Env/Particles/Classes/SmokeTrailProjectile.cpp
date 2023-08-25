@@ -12,6 +12,10 @@
 #include "Sim/Misc/GlobalSynced.h"
 #include "System/SpringMath.h"
 
+#include "lib/entt/entt.hpp"
+extern entt::registry registry;
+extern bool ECS_MODE;
+
 CR_BIND_DERIVED(CSmokeTrailProjectile, CProjectile, )
 
 CR_REG_METADATA(CSmokeTrailProjectile,(
@@ -74,6 +78,13 @@ CSmokeTrailProjectile::CSmokeTrailProjectile(
 	SetRadiusAndHeight(pos1.distance(pos2), 0.0f);
 
 	useAirLos |= ((pos.y - CGround::GetApproximateHeight(pos.x, pos.z)) > 10.0f);
+	
+	if (ECS_MODE)
+	{
+		// FIXME temporary ECS workaround required because of UpdateEndPos() external calls
+		ent = entt::to_integral(registry.create());
+	}
+	
 }
 
 void CSmokeTrailProjectile::Serialize(creg::ISerializer* s)

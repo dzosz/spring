@@ -650,6 +650,85 @@ static void DrawCSmokeProjectile(entt::entity ent, ViewT&& view)
 	);
 }
 
+template <typename ViewT>
+static void DrawCSmokeTrailProjectile(entt::entity ent, ViewT&& view) 
+{
+	LOG("Draw DrawCSmokeTrailProjectile");
+	auto& lifeTime = view.template get<const Lifetime>(ent).value;
+	auto& decay = view.template get<const Decayrate>(ent).value;
+	auto& d = view.template get<const SmokeTrail>(ent);
+	auto& texture = view.template get<const RenderData>(ent).texture;
+	auto color = view.template get<const Color>(ent).v.x;
+	
+	auto& animParams = view.template get<const AnimParams>(ent);
+	auto& animProgress = view.template get<const AnimProgress>(ent);
+	float3 animInfo = { animParams.value.x, animParams.value.y, animProgress.value };
+	
+	const float age = registry.ctx().get<PhysDelta>().frameNum + 
+					  registry.ctx().get<PhysDelta>().timeOffset - animParams.createFrame;
+	
+	const float invLifeTime = decay;
+
+	const bool shadowPass = (camera->GetCamType() == CCamera::CAMTYPE_SHADOW);
+
+	const float3 dif1 = shadowPass ? camera->GetForward() : (d.pos1 - camera->GetPos()).ANormalize();
+	const float3 dif2 = shadowPass ? camera->GetForward() : (d.pos2 - camera->GetPos()).ANormalize();
+
+	const float3 odir1 = (dif1.cross(d.dir1)).ANormalize();
+	const float3 odir2 = (dif2.cross(d.dir2)).ANormalize();
+
+	const float t1 = (age                    ) * invLifeTime;
+	const float tm = (age + 0.5f * d.lifePeriod) * invLifeTime;
+	const float t2 = (age +        d.lifePeriod) * invLifeTime;
+
+	const float lerp1 = ((1.0f - t1) * (0.7f + std::fabs(dif1.dot(d.dir1)))) * (1 - d.lastSegment );
+	const float lerp2 = ((1.0f - t2) * (0.7f + std::fabs(dif2.dot(d.dir2)))) * (1 - d.firstSegment);
+
+	const float size1 = 1.0f + t1 * d.origSize;
+	const float size2 = 1.0f + t2 * d.origSize;
+
+
+	const SColor colBase = { color, color, color, 1.0f };
+	const SColor col1 = colBase * std::clamp(lerp1, 0.0f, 1.0f);
+	const SColor col2 = colBase * std::clamp(lerp2, 0.0f, 1.0f);
+
+	if (d.drawSegmented) {
+
+		const float3 difm = shadowPass ? camera->GetForward() : (d.midpos - camera->GetPos()).ANormalize();
+		const float3 odirm = (difm.cross(d.middir)).ANormalize();
+
+		const float lerpm = (1.0f - tm) * (0.7f + std::fabs(difm.dot(d.middir)));
+		const float sizem = (0.2f + tm) * d.origSize;
+		const float midtexx = mix(texture->xstart, texture->xend, 0.5f);
+
+		const SColor colm = colBase * std::clamp(lerpm, 0.0f, 1.0f);
+
+		AddEffectsQuad(
+			{ d.pos1   - (odir1 * size1), texture->xstart, texture->ystart, col1  },
+			{ d.midpos - (odirm * sizem), midtexx        , texture->ystart, colm },
+			{ d.midpos + (odirm * sizem), midtexx        , texture->yend  , colm },
+			{ d.pos1   + (odir1 * size1), texture->xstart, texture->yend  , col1  },
+			animInfo
+		);
+
+		AddEffectsQuad(
+			{ d.midpos - (odirm * sizem), midtexx      ,   texture->ystart, colm },
+			{ d.pos2   - (odir2 * size2), texture->xend,   texture->ystart, col2 },
+			{ d.pos2   + (odir2 * size2), texture->xend,   texture->yend  , col2 },
+			{ d.midpos + (odirm * sizem), midtexx      ,   texture->yend  , colm },
+			animInfo
+		);
+	} else {
+		AddEffectsQuad(
+			{ d.pos1 - (odir1 * size1), texture->xstart, texture->ystart, col1 },
+			{ d.pos2 - (odir2 * size2), texture->xend  , texture->ystart, col2 },
+			{ d.pos2 + (odir2 * size2), texture->xend  , texture->yend  , col2 },
+			{ d.pos1 + (odir1 * size1), texture->xstart, texture->yend  , col1 },
+			animInfo
+		);
+	}
+}
+
 
 void PreDrawSystem() {
 	UpdateAnimProgressSystem(registry.view<AnimProgress, const AnimParams>());
@@ -665,7 +744,7 @@ void PreDrawSystem() {
 // this is a temporary compatible solution that respects drawing order and
 // prevents any graphical artifacts when drawing mixed ECS and legacy OOP projectiles
 // this approach uses runtime look up of the components type
-void DrawSystem(const std::vector<std::pair<std::pair<float, float>, CProjectile*>>& sortedProj)
+void DrawSystem(const std::vector<std::pair<std::pair<int, float>, CProjectile*>>& sortedProj)
 { // TODO figure out fastest way for dispatching. maybe add entt::observer and check proj visibility first?	
 	registry.sort<DrawOrder>([](const auto &lhs, const auto &rhs) {
 		return std::pair(lhs.drawOrder, lhs.distanceFromCamera) < std::pair(rhs.drawOrder, rhs.distanceFromCamera);
@@ -702,6 +781,8 @@ void DrawSystem(const std::vector<std::pair<std::pair<float, float>, CProjectile
 			DrawCMuzzleFlame(ent, registry);
 		} else if (registry.all_of<CSmokeProjectileTag>(ent)) {
 			DrawCSmokeProjectile(ent, registry);
+		} else if (registry.all_of<CSmokeTrailProjectileTag>(ent)) {
+			DrawCSmokeTrailProjectile(ent, registry);
 		}
 	});
 

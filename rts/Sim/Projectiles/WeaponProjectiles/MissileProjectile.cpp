@@ -20,6 +20,8 @@
 #include "System/Matrix44f.h"
 #include "System/SpringMath.h"
 
+#include "Rendering/Env/Particles/ECS_systems.h"
+
 CR_BIND_DERIVED(CMissileProjectile, CWeaponProjectile, )
 
 CR_REG_METADATA(CMissileProjectile,(
@@ -234,6 +236,10 @@ void CMissileProjectile::Update()
 			oldSmoke = pos;
 			oldDir = dir;
 		}
+		if (UpdateEndPos(this->ent, pos, dir)) {
+			oldSmoke = pos;
+			oldDir = dir;
+		}
 
 		if ((age % weaponDef->visuals.smokePeriod) == 0) {
 			smokeTrail = projMemPool.alloc<CSmokeTrailProjectile>(
@@ -252,6 +258,10 @@ void CMissileProjectile::Update()
 
 			numParts = 0;
 			useAirLos = smokeTrail->useAirLos;
+			
+			ent = smokeTrail->ent;
+			if (ent)
+				smokeTrail = nullptr;
 		}
 	}
 

@@ -19,6 +19,7 @@
 #include "System/Matrix44f.h"
 #include "System/SpringMath.h"
 
+#include "Rendering/Env/Particles/ECS_systems.h"
 
 CR_BIND(CStarburstProjectile::TracerPart, )
 CR_REG_METADATA_SUB(CStarburstProjectile, TracerPart, (
@@ -280,8 +281,14 @@ void CStarburstProjectile::UpdateSmokeTrail()
 	if (!leaveSmokeTrail)
 		return;
 
-	if (smokeTrail != nullptr)
-		smokeTrail->UpdateEndPos(oldSmoke = pos, oldSmokeDir = dir);
+	if (smokeTrail != nullptr) {
+		oldSmoke = pos;
+		oldSmokeDir = dir;
+	}
+	if (UpdateEndPos(this->ent, pos, dir)) {
+		oldSmoke = pos;
+		oldSmokeDir = dir;
+	}
 
 	trailAge++;
 	numParts++;
@@ -305,6 +312,10 @@ void CStarburstProjectile::UpdateSmokeTrail()
 
 	numParts = 0;
 	useAirLos = smokeTrail->useAirLos;
+	ent = smokeTrail->ent;
+	if (ent) {
+		smokeTrail = nullptr;
+	}
 }
 
 inline float CStarburstProjectile::GetSmokeSize() const

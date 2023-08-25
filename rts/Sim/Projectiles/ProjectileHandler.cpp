@@ -42,6 +42,8 @@
 #include "Rendering/Env/Particles/Classes/HeatCloudProjectile.h"
 #include "Rendering/Env/Particles/Classes/MuzzleFlame.h"
 #include "Rendering/Env/Particles/Classes/SmokeProjectile.h"
+#include "Rendering/Env/Particles/Classes/SmokeTrailProjectile.h"
+
 #include <typeindex>
 
 // reserve 5% of maxNanoParticles for important stuff such as capture and reclaim other teams' units
@@ -81,10 +83,7 @@ static std::vector<CProjectile*> queuedProjectiles;
 static std::unordered_map<std::type_index, std::function<void(CProjectile*)>> ecsSpawner;
 
 bool isEcsProj(const CProjectile* pro) {
-
-	if (!dynamic_cast<const CSmokeProjectile*>(pro)) {
-		return true;
-	}
+	
 	if (!ECS_MODE)
 		return false;
 	auto type_idx = std::type_index(typeid(*pro));
@@ -177,7 +176,7 @@ void CProjectileHandler::AddECSProjectile(CBitmapMuzzleFlame* proj) {
 	registry.emplace<Length>(ent, proj->length);
 	registry.emplace<AnimProgress>(ent, 0.0f);	
 	registry.emplace<AnimParams>(ent, proj->animParams, proj->createFrame);
-	//registry.emplace<ParticlePhys>(ent, 0.0f, 1.0f);
+
 	registry.emplace<RenderData>(ent, proj->frontTexture, proj->sideTexture, proj->colorMap, false);
 }
 
@@ -306,8 +305,51 @@ void CProjectileHandler::AddECSProjectile(CSmokeProjectile* proj)
 	registry.emplace<RenderData>(ent, projectileDrawer->GetSmokeTexture(proj->textureNum), nullptr, nullptr, false);	
 }
 
+void CProjectileHandler::AddECSProjectile(CSmokeTrailProjectile* proj)
+{
+	//auto ent = registry.create();	
+	auto ent = entt::entity(proj->ent); // FIXME temporary workaround required because of UpdateEndPos() external calls
+	
+	if (!registry.valid(ent)) {
+		throw 130;
+	}
+	registry.emplace<CSmokeTrailProjectileTag>(ent);
+	
+	registry.emplace<DrawRadius>(ent, proj->drawRadius);
+	registry.emplace<DrawPosition>(ent, proj->drawPos);
+	registry.emplace<DrawOrder>(ent, proj->drawOrder, 0.0f);
+	registry.emplace<AlliedTeam>(ent, proj->allyteamID);
+	
+	registry.emplace<Position>(ent, proj->pos);
+	// registry.emplace<Speed>(ent, proj->speed);
+	
+	registry.emplace<Lifetime>(ent, 0.0);
+	registry.emplace<Decayrate>(ent, 1.0/proj->lifeTime);
+	
+	registry.emplace<AnimProgress>(ent, 0.0f);
+	registry.emplace<AnimParams>(ent, proj->animParams, proj->createFrame);
+	registry.emplace<RenderData>(ent, proj->texture, nullptr, nullptr, false);
+	
+	registry.emplace<Color>(ent, float3{proj->color, 0.0, 0.0});
 
-// COMMENT this approach can already be merged to master as it provides safety to projectiles container.
+	registry.emplace<SmokeTrail>(ent,
+		proj->lifePeriod,
+		proj->pos1,
+		proj->pos2,
+		proj->origSize,
+		proj->dir1,
+		proj->dir2,
+		proj->midpos,
+		proj->middir,
+		proj->drawSegmented,
+		proj->firstSegment,
+		proj->lastSegment
+	);
+
+
+}
+
+// provides safety to projectiles container.
 // It avoids duplicated iteration over projectiles[synced] containers
 // and gives control when exactly to Update() new particles
 void CProjectileHandler::AddUnsyncedParticleToQueue(CProjectile* proj) {
@@ -319,12 +361,12 @@ void CProjectileHandler::DrainUnsyncedProjectileQueue() {
 	for (auto* p : queuedProjectiles) {
 		auto type_idx = std::type_index(typeid(*p));
 		auto it = ecsSpawner.find(type_idx);
-		if (it != ecsSpawner.end()) {
+		if (ECS_MODE && it != ecsSpawner.end()) {
 			it->second(p);
-			// Commented out so we can pause the game and see same frame with Legacy or ECS projectiles
+			// Comment out lines below so we can pause the game and see same frame with Legacy or ECS projectiles
 			// when ECS_MODE option is changed
-			//projMemPool.free(p);
-			//continue;
+			projMemPool.free(p);
+			continue;
 		}
 		// legacy unsynced projectile path
 		p->id = static_cast<int>(projectiles[false].Add(p));
@@ -364,12 +406,15 @@ void CProjectileHandler::Init()
 	registry.ctx().insert_or_assign(PhysDelta{});
 	ConfigNotify({}, {});
 	
+
 	ecsSpawner[std::type_index(typeid(CSimpleParticleSystem))] = [&](CProjectile* p) {
 		AddECSProjectile(static_cast<CSimpleParticleSystem*>(p));
 	};
+
 	ecsSpawner[std::type_index(typeid(CBitmapMuzzleFlame))] = [&](CProjectile* p) {
 		AddECSProjectile(static_cast<CBitmapMuzzleFlame*>(p));
 	};
+	
 	ecsSpawner[std::type_index(typeid(CDirtProjectile))] = [&](CProjectile* p) {
 		AddECSProjectile(static_cast<CDirtProjectile*>(p));
 	};
@@ -387,6 +432,10 @@ void CProjectileHandler::Init()
 
 	ecsSpawner[std::type_index(typeid(CSmokeProjectile))] = [&](CProjectile* p) {
 		AddECSProjectile(static_cast<CSmokeProjectile*>(p));
+	};
+
+	ecsSpawner[std::type_index(typeid(CSmokeTrailProjectile))] = [&](CProjectile* p) {
+		AddECSProjectile(static_cast<CSmokeTrailProjectile*>(p));
 	};
 	
 	createECSTaskGraph();

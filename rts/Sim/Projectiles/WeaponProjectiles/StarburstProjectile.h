@@ -82,6 +82,7 @@ private:
 
 	TracerPart tracerParts[NUM_TRACER_PARTS];
 	CSmokeTrailProjectile* smokeTrail = nullptr;
+	unsigned int ent=0;
 };
 
 #endif /* STARBURST_PROJECTILE_H */

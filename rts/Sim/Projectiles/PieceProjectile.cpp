@@ -22,6 +22,9 @@
 #include "System/Matrix44f.h"
 #include "System/SpringMath.h"
 
+#include "lib/entt/entt.hpp"
+#include "Rendering/Env/Particles/ECS_systems.h"
+
 static constexpr int   SMOKE_TIME   = 40;
 static constexpr int   SMOKE_SIZE   = 14;
 static constexpr float SMOKE_COLOR  = 0.5f;
@@ -173,6 +176,9 @@ void CPieceProjectile::Collision(CUnit* unit, CFeature* feature)
 				SMOKE_COLOR,
 				projectileDrawer->smoketrailtex
 			);
+			ent = entt::to_integral(smokeTrail->ent);
+			if (ent)
+				smokeTrail = nullptr;
 		}
 	}
 
@@ -233,6 +239,10 @@ void CPieceProjectile::Update()
 			oldSmokePos = pos;
 			oldSmokeDir = dir;
 		}
+		if (UpdateEndPos(this->ent, pos, dir)) {
+			oldSmokePos = pos;
+			oldSmokeDir = dir;
+		}
 
 		if ((age % NUM_TRAIL_PARTS) == 0) {
 			smokeTrail = projMemPool.alloc<CSmokeTrailProjectile>(
@@ -247,8 +257,12 @@ void CPieceProjectile::Update()
 				SMOKE_COLOR,
 				projectileDrawer->smoketrailtex
 			);
-
+			
 			useAirLos = smokeTrail->useAirLos;
+			
+			ent = smokeTrail->ent;	
+			if (ent) 
+				smokeTrail = nullptr;
 		}
 	}
 }

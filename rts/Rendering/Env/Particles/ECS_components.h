@@ -26,7 +26,7 @@ struct ParticleIndex {
 };
 
 struct DrawOrder {
-	float drawOrder;
+	int drawOrder;
 	float distanceFromCamera; // should be negative as we want to draw far object first
 };
 
@@ -84,6 +84,7 @@ struct AnimProgress {
 };
 
 struct AnimParams {
+	// TODO most particles have animSpeed=0 so no need to update, SPLIT
 	float3 value;
 	int createFrame;
 };
@@ -145,6 +146,23 @@ struct Color {
 	float3 v;
 };
 
+struct SmokeTrail {
+	// TODO these things are almost never updated so making god class
+	int lifePeriod;
+	float3 pos1;
+	float3 pos2;
+	float origSize;
+
+	float3 dir1;
+	float3 dir2;
+
+	float3 midpos;
+	float3 middir;
+	bool drawSegmented;
+	bool firstSegment;
+	bool lastSegment;
+};
+
 // Drawable tags
 struct SimpleParticleSystemTag {};
 struct CBitmapMuzzleFlameTag {};
@@ -153,6 +171,7 @@ struct CExploSpikeProjectileTag{};
 struct CHeatCloudProjectileTag{};
 struct CMuzzleFlameTag{};
 struct CSmokeProjectileTag{};
+struct CSmokeTrailProjectileTag{};
 
 
 // System behavior Tags
