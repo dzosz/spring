@@ -72,7 +72,7 @@ inline void PositionSystem(entt::view<entt::get_t<Position, const Speed>> view) 
 	});
 }
 
-void WindPositionSystem(entt::view<entt::get_t<Position, const Lifetime, const PositionWindChangeTag>> view);
+void WindPositionSystem(entt::view<entt::get_t<const PositionWindChangeTag, Position, const Lifetime>> view);
 
 inline void SpeedParticlePhysSystem(entt::view<entt::get_t<Speed, const ParticlePhys>> view) {
 	view.each([&](const auto ent, auto& s, const auto& phys) {

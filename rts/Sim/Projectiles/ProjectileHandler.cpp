@@ -83,7 +83,6 @@ static std::vector<CProjectile*> queuedProjectiles;
 static std::unordered_map<std::type_index, std::function<void(CProjectile*)>> ecsSpawner;
 
 bool isEcsProj(const CProjectile* pro) {
-	
 	if (!ECS_MODE)
 		return false;
 	auto type_idx = std::type_index(typeid(*pro));
@@ -554,7 +553,10 @@ void CProjectileHandler::UpdateProjectilesImpl()
 		//auto ecs_process_future = std::async(std::launch::async, updateECSParticles);
 		//auto ecs_process_future = ThreadPool::Enqueue(updateECSParticles);
 		
-		updateECSParticles();
+		if (ECS_MODE) {
+			updateECSParticles();
+			return;
+		}
 		
 		size_t s = pc.size();
 		for(size_t i =0; i < s; ++i) {

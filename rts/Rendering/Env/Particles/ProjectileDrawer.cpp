@@ -804,6 +804,7 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 		else
 			std::sort(sortedProjectiles.begin(), sortedProjectiles.end(), CProjectileSortingPredicate);
 
+		if (ECS_MODE)
 		{
 			SCOPED_TIMER("Draw::World::Projectiles::ECS::PreDraw");
 			PreDrawSystem();
