@@ -176,6 +176,7 @@ struct CSmokeTrailProjectileTag{};
 
 // System behavior Tags
 struct GroundCollisionTag {};
+struct UpdateAnimParamsTag {};
 struct Destroyed {};
 struct PositionWindChangeTag{};
 struct CastShadowTag{};

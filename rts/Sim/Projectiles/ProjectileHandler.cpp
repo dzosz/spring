@@ -1,6 +1,7 @@
 /* This file is part of the Spring engine (GPL v2 or later), see LICENSE.html */
 
 #include <algorithm>
+#include <sstream>
 
 #include "Projectile.h"
 #include "ProjectileHandler.h"
@@ -111,8 +112,16 @@ static void createECSTaskGraph() {
 	ecsTaskList.emplace<&GrowSmokeSizeSystem>();
 	
 	// preallocate pools
+	LOG("ECS Task List:");
+	int idx = 0;
 	for(auto &&node: ecsTaskList.graph()) {
 		node.prepare(registry);
+		auto children = node.children();
+		
+		std::ostringstream oss;
+		std::copy(children.begin(), children.end(), std::ostream_iterator<size_t>(oss, " "));
+		LOG("%i %.*s child tasks: %s", idx, static_cast<int>(node.info().name().length()), node.info().name().data(), oss.str().c_str());
+		++idx;
 	}
 }
 
@@ -136,6 +145,8 @@ void CProjectileHandler::AddECSProjectile(CSimpleParticleSystem* proj) {
 		auto& particles = proj->particles;
 		auto ent = registry.create();
 		registry.emplace<SimpleParticleSystemTag>(ent);
+		registry.emplace<UpdateAnimParamsTag>(ent);
+		
 		registry.emplace<DrawRadius>(ent, proj->drawRadius);
 		registry.emplace<DrawPosition>(ent, proj->drawPos);
 		registry.emplace<DrawOrder>(ent, proj->drawOrder, 0.0f);
@@ -158,6 +169,7 @@ void CProjectileHandler::AddECSProjectile(CSimpleParticleSystem* proj) {
 void CProjectileHandler::AddECSProjectile(CBitmapMuzzleFlame* proj) {
 	auto ent = registry.create();
 	registry.emplace<CBitmapMuzzleFlameTag>(ent);
+	registry.emplace<UpdateAnimParamsTag>(ent);
 	registry.emplace<AirLosTag>(ent);
 	
 	registry.emplace<FrontOffset>(ent, proj->frontOffset); // BitmapMuzzleFlameSpecific
@@ -565,20 +577,20 @@ void CProjectileHandler::UpdateProjectilesImpl()
 		
 		if (ECS_MODE) {
 			updateECSParticles();
+			//UpdateECSParticlesMT();
 			return;
 		}
 		
 		size_t s = pc.size();
 		for(size_t i =0; i < s; ++i) {
-		//for_mt_chunk(0, pc.size(), [&pc](int i) {	
+		// for_mt_chunk(0, pc.size(), [&pc](int i) {	
 			CProjectile* p = pc[i];
 			assert(p != nullptr);
 
 			MAPPOS_SANITY_CHECK(p->pos);
 			p->Update();
 			MAPPOS_SANITY_CHECK(p->pos);
-		}
-		//;
+		}//);
 		//ecs_process_future.wait();
 	}
 }

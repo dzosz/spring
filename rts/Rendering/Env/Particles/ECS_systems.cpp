@@ -99,7 +99,9 @@ static void DrawSimpleParticleSystem(entt::entity ent, ViewT&& view)
 	const bool shadowPass = (camera->GetCamType() == CCamera::CAMTYPE_SHADOW);
 	if (data.directional && !shadowPass) {
 		const float3 zdir = (drawPos - camera->GetPos()).SafeANormalize();
-			  float3 ydir = zdir.cross(speed); float yDirLen2 = ydir.SqLength(); ydir.SafeANormalize();
+		float3 ydir = zdir.cross(speed);
+		const float yDirLen2 = ydir.SqLength();
+		ydir.SafeANormalize();
 		const float3 xdir = ydir.cross(zdir);
 
 		const float3 interPos = drawPos;
@@ -201,7 +203,8 @@ void UpdateDrawOrder(entt::view<entt::get_t<const DrawPosition, DrawOrder>> view
 	});
 }
 
-void UpdateAnimProgressSystem(entt::view<entt::get_t<AnimProgress, const AnimParams>> view)
+void UpdateAnimProgressSystem(entt::view<entt::get_t<const UpdateAnimParamsTag,
+							  AnimProgress, const AnimParams>> view)
 {
 	view.each([&](auto ent, auto& animProgress, const auto& animParams) {
 		const float t = (registry.ctx().get<PhysDelta>().frameNum - animParams.createFrame +
