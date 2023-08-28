@@ -383,7 +383,8 @@ void CProjectileHandler::DrainUnsyncedProjectileQueue() {
 		auto type_idx = std::type_index(typeid(*p));
 		auto it = ecsSpawner.find(type_idx);
 		if (ECS_MODE && it != ecsSpawner.end()) {
-			it->second(p);
+			it->second(p); // calls CProjectileHandler::AddECSProjectile(proj)
+			
 			// Comment out lines below so we can pause the game and see same frame with Legacy or ECS projectiles
 			// when ECS_MODE option is changed
 			projMemPool.free(p);
@@ -726,6 +727,39 @@ void CProjectileHandler::Update()
 
 	frameProjectileCounts[ true] = projectiles[ true].size();
 	frameProjectileCounts[false] = projectiles[false].size();
+
+	// prints currently allocated projectiles every second
+    /*
+	if (gs->frameNum % 30 == 0) {
+		std::map<std::type_index, std::pair<std::string, size_t>> unsynced;
+		std::map<std::type_index, std::pair<std::string,size_t>> synced;
+				
+		for (const CProjectile* p: projectiles[ true]) {
+			frameCurrentParticles += p->GetProjectilesCount();
+			auto id = std::type_index(typeid(*p));
+			if (synced.find(typeid(*p)) == synced.end()) {
+				synced.insert(std::pair{id, std::pair{typeid(*p).name(), 0}});
+			}
+			synced.at(id).second += 1;
+		}
+				
+		for (const CProjectile* p: projectiles[false]) {
+			auto id = std::type_index(typeid(*p));
+			if (unsynced.find(typeid(*p)) == unsynced.end()) {
+				unsynced.insert(std::pair{id, std::pair{typeid(*p).name(), 0}});
+			}
+			unsynced.at(id).second += 1;
+		}
+		
+		
+		for (auto& t : unsynced) {
+			LOG("u %s %lu", t.second.first.c_str(), t.second.second);
+		}
+		for (auto& t : synced) {
+			LOG("s %s %lu", t.second.first.c_str(), t.second.second);
+		}
+	}
+	*/
 }
 
 void CProjectileHandler::AddProjectile(CProjectile* p)
@@ -1134,6 +1168,7 @@ int CProjectileHandler::GetCurrentParticles() const
 		}
 	}
 	partCount += groundFlashes.size();
+	partCount += registry.size();
 	return partCount;
 }
 

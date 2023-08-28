@@ -4,20 +4,21 @@ ECS checklist:
 Done:
 * Runtime switch for ECS MODE (you can pause the game, switch the mode to observe the difference)
 * Migrated types projectiles to ECS:
-  SimpleParticleProjectile CBitmapMuzzleFlame CDirtProjectile CExploSpikeProjectileTag
+  SimpleParticleSystem CBitmapMuzzleFlame CDirtProjectile CExploSpikeProjectileTag
   CBitmapMuzzleFlameTag CDirtProjectileTag CHeatCloudProjectileTag CMuzzleFlameTag
   CSmokeProjectileTag CSmokeTrailProjectileTag
 * Thread safety for both legacy and ECS projectiles in explosion generator
 * Projectile drawing & sorting based on draw distance (integrated with existing synced projectiles)
 * Shadow drawing
+* Performance: ECS Sim() is up to 5% faster, ECS Draw() 30% SLOWER in corshiva corshiva 200 (80k MaxPraticle limit)
 
 To do:
 * Make clear distinction what should be computed in Sim() and what in Draw() contexts.
-  Most projectiles only update lifetime in Sim() except for SimpleParticleSystem and 
+  Most projectiles do very little in Sim() (only update lifetime) except for SimpleParticleSystem and 
   unsynced projectiles that interact with environment - e.g. Dirt projectile disappears
-  after hitting the ground so I guess it needs to be updated in Sim() ?
+  after hitting the ground.
 * Improve approach to Drawing. For now the drawing functions were copied over from legacy classes.
-  What is the fastest way to draw visible projectiles? 
+  What is the fastest way to draw projectiles made of many components?
 * Create new Spawner class (see explosion generator) that doesn't require legacy Particles to exist
   (currently ECS particles copy out data from original Particles, then deallocates them)
 * Add minimap drawing for ECS particles
@@ -251,22 +252,22 @@ void WindPositionSystem(entt::view<entt::get_t<const PositionWindChangeTag, Posi
 	});
 }
 
-static bool CanDrawProjectile(const Position& pos, const AlliedTeam& allyTeam,
+static bool CanDrawProjectile(const float3& pos, const AlliedTeam& allyTeam,
 							  const bool isAirLos)
 {
 	auto& th = teamHandler;
 	auto& lh = losHandler;
 	return (gu->spectatingFullView ||
 			(th.IsValidAllyTeam(allyTeam.value) && th.Ally(allyTeam.value, gu->myAllyTeam))
-			|| lh->InLos(pos.value, gu->myAllyTeam)
-			|| (isAirLos && lh->InAirLos(pos.value, allyTeam.value)));
+			|| lh->InLos(pos, gu->myAllyTeam)
+			|| (isAirLos && lh->InAirLos(pos, allyTeam.value)));
 }
 
 static bool isParticleVisible(const Position& pos, const DrawPosition& drawPos,
 							  const DrawRadius& drawRadius, const AlliedTeam& allyteam,
 							  const bool isAirLos)
 {
-	if (!CanDrawProjectile(pos, allyteam, isAirLos))
+	if (!CanDrawProjectile(pos.value, allyteam, isAirLos))
 		return false;
 
 	bool drawRefraction = false; // TODO
@@ -281,6 +282,36 @@ static bool isParticleVisible(const Position& pos, const DrawPosition& drawPos,
 		return false;
 
 	return true;
+}
+
+static void UpdateVisibilitySystem(entt::registry& reg)
+{
+	reg.clear<VisibleTag>();
+	
+	const CCamera* cam = CCameraHandler::GetActiveCamera();
+	
+	registry.view<const DrawPosition, const DrawRadius>().each([&](auto ent, const auto& drawPos, const auto& drawRadius) {
+		if (cam->InView(drawPos.value, drawRadius.value)) {
+			reg.emplace_or_replace<VisibleTag>(ent);
+		}
+	});
+	
+	registry.view<const DrawPosition, const AlliedTeam>().each([&](auto ent, const auto& drawPos, const auto& allyteam) {
+		bool isAirLos = registry.all_of<AirLosTag>(ent);
+		if (CanDrawProjectile(drawPos.value, allyteam, isAirLos)) {
+			reg.emplace_or_replace<VisibleTag>(ent);	
+		}
+	});
+	/*
+
+	bool drawRefraction = false; // TODO
+	if (drawRefraction && (drawPos.value.y > drawRadius.value))// !pro->IsInWater())
+		return false;
+	// removed this to fix AMD particle drawing
+	//if (drawReflection && !CModelDrawerHelper::ObjectVisibleReflection(pro->drawPos, camera->GetPos(), pro->GetDrawRadius()))
+	//	return;
+
+	*/
 }
 
 template <typename ViewT>
@@ -685,25 +716,17 @@ static void DrawCSmokeTrailProjectile(entt::entity ent, ViewT&& view)
 
 
 void PreDrawSystem() {
-	UpdateAnimProgressSystem(registry.view<AnimProgress, const AnimParams>());
+	UpdateAnimProgressSystem(registry.view<const UpdateAnimParamsTag, AnimProgress, const AnimParams>());
 	UpdateDrawPosSystem(registry.view<const Position, DrawPosition>(entt::exclude<Speed>));
 	UpdateDrawPosSpeedSystem(registry.view<const Position, const Speed, DrawPosition>());
 	UpdateDrawOrder(registry.view<const DrawPosition, DrawOrder>());
 	RotationSystem(registry.view<Rotation, const RotParams, const AnimParams>());
+	UpdateVisibilitySystem(registry);
 	// TODO add update DrawRadius
 }
 
 template <typename ViewT>
 static void DispatchDrawingECS(entt::entity ent, ViewT&& view) {
-	auto& pos = registry.get<Position>(ent);
-	auto& drawPos = registry.get<DrawPosition>(ent);
-	auto& drawRadius = registry.get<DrawRadius>(ent);
-	auto& allyteam = registry.get<AlliedTeam>(ent);
-	bool isAirLos = registry.all_of<AirLosTag>(ent);
-	// TODO figure out fastest way for dispatching. maybe add entt::observer and check proj visibility in system?	
-	if (!isParticleVisible(pos, drawPos, drawRadius, allyteam, isAirLos))
-		return;
-
 	if (registry.all_of<SimpleParticleSystemTag>(ent)) {
 		DrawSimpleParticleSystem(ent, registry);
 	} else if (registry.all_of<CBitmapMuzzleFlameTag>(ent)) {
@@ -734,7 +757,7 @@ void DrawSystem(const std::vector<std::pair<std::pair<int, float>, CProjectile*>
 	}); 
 
 	auto projIt = sortedProj.begin();
-	registry.view<const DrawOrder>().each([&](auto ent, const auto& drawOrder) {
+	registry.view<const DrawOrder, const VisibleTag>().each([&](auto ent, const auto& drawOrder) {
 		const auto dist = std::pair{drawOrder.drawOrder, drawOrder.distanceFromCamera};
 		while (projIt != sortedProj.end() && projIt->first < dist) {
 			projIt->second->Draw();
@@ -752,7 +775,7 @@ void DrawSystem(const std::vector<std::pair<std::pair<int, float>, CProjectile*>
 
 void DrawShadowSystem()
 {
-	registry.view<const CastShadowTag>().each([&](auto ent) {
+	registry.view<const VisibleTag, const CastShadowTag>().each([&](auto ent) {
 		DispatchDrawingECS(ent, registry);
 	});
 }

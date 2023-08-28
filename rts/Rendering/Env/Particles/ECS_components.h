@@ -181,4 +181,4 @@ struct Destroyed {};
 struct PositionWindChangeTag{};
 struct CastShadowTag{};
 struct AirLosTag{};
-
+struct VisibleTag{};
