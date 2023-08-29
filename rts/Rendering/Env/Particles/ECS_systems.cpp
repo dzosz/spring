@@ -284,36 +284,28 @@ static bool isParticleVisible(const Position& pos, const DrawPosition& drawPos,
 static void UpdateVisibilitySystem(entt::registry& reg)
 {
 	reg.clear<VisibleTag>();
-	// TODO all conditions should be met to make proj visible, not just one
-	
 	const CCamera* cam = CCameraHandler::GetActiveCamera();
 	
-	registry.view<const DrawPosition, const DrawRadius>().each([&](auto ent, const auto& drawPos, const auto& drawRadius) {
-		if (cam->InView(drawPos.value, drawRadius.value)) {
-			reg.emplace_or_replace<VisibleTag>(ent);
+	registry.view<const DrawPosition, const DrawRadius, const AlliedTeam>().each(
+				[&](auto ent, const auto& drawPos, const auto& drawRadius, const auto& allyteam) {
+		bool isAirLos = registry.all_of<AirLosTag>(ent);
+		if (!CanDrawProjectile(drawPos.value, allyteam, isAirLos)) {
+			return;
+		}
+		if (!cam->InView(drawPos.value, drawRadius.value)) {
+			return;
 		}
 		
 		bool drawRefraction = registry.ctx().get<DrawMode>().drawRefraction;
 		if (!(drawRefraction && (drawPos.value.y > drawRadius.value)) /*!pro->IsInWater()*/)
-			reg.emplace_or_replace<VisibleTag>(ent);
+			return;
+		
+		// removed this to fix AMD particle drawing
+		//if (drawReflection && !CModelDrawerHelper::ObjectVisibleReflection(pro->drawPos, camera->GetPos(), pro->GetDrawRadius()))
+		//	return;
+		
+		reg.emplace_or_replace<VisibleTag>(ent);	
 	});
-	
-	registry.view<const DrawPosition, const AlliedTeam>().each([&](auto ent, const auto& drawPos, const auto& allyteam) {
-		bool isAirLos = registry.all_of<AirLosTag>(ent);
-		if (CanDrawProjectile(drawPos.value, allyteam, isAirLos)) {
-			reg.emplace_or_replace<VisibleTag>(ent);	
-		}
-	});
-	/*
-
-	bool drawRefraction = false; // TODO
-	if (drawRefraction && (drawPos.value.y > drawRadius.value))// !pro->IsInWater())
-		return false;
-	// removed this to fix AMD particle drawing
-	//if (drawReflection && !CModelDrawerHelper::ObjectVisibleReflection(pro->drawPos, camera->GetPos(), pro->GetDrawRadius()))
-	//	return;
-
-	*/
 }
 
 template <typename ViewT>
