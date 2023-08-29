@@ -95,12 +95,13 @@ namespace {
 
 static void createECSTaskGraph() {
 	ecsTaskList.clear();
+	ecsTaskList.emplace<&DeleteDestroyedSystem>();
 	ecsTaskList.emplace<&LifetimeSystem>();
 	ecsTaskList.emplace<&LifetimePositionAboveGroundSystem>();
 	ecsTaskList.emplace<&LifetimeAlphaSystem>();
 	ecsTaskList.emplace<&LifetimeHeatSystem>();
 	ecsTaskList.emplace<&LifetimeFlameSystem>();
-	ecsTaskList.emplace<&DeleteDestroyedSystem>();
+	
 
 	ecsTaskList.emplace<&PositionSystem>();
 	ecsTaskList.emplace<&SpeedParticlePhysSystem>();
@@ -108,6 +109,7 @@ static void createECSTaskGraph() {
 	ecsTaskList.emplace<&WindPositionSystem>();
 	
 	ecsTaskList.emplace<&GrowSizeSystem>();
+	ecsTaskList.emplace<&UpdateSizeChangeSystem>();	
 	ecsTaskList.emplace<&GrowLengthSystem>();
 	ecsTaskList.emplace<&GrowSmokeSizeSystem>();
 	
@@ -145,12 +147,11 @@ void CProjectileHandler::AddECSProjectile(CSimpleParticleSystem* proj) {
 		auto& particles = proj->particles;
 		auto ent = registry.create();
 		registry.emplace<SimpleParticleSystemTag>(ent);
-		registry.emplace<UpdateAnimParamsTag>(ent);
 		
 		registry.emplace<DrawRadius>(ent, proj->drawRadius);
 		registry.emplace<DrawPosition>(ent, proj->drawPos);
 		registry.emplace<DrawOrder>(ent, proj->drawOrder, 0.0f);
-		registry.emplace<AlliedTeam>(ent, proj->allyteamID); // TODO maybe ignore this check if team is not set?
+		registry.emplace<AlliedTeam>(ent, proj->allyteamID); // TODO maybe ignore this component if team is not set?
 		registry.emplace<Position>(ent, particles[i].pos);
 		registry.emplace<Speed>(ent, particles[i].speed);
 		registry.emplace<Rotation>(ent, particles[i].rotVal, particles[i].rotVel);
@@ -160,7 +161,8 @@ void CProjectileHandler::AddECSProjectile(CSimpleParticleSystem* proj) {
 		registry.emplace<Sized>(ent, particles[i].size);
 		registry.emplace<SizeChange>(ent, proj->sizeMod, proj->sizeGrowth);
 		registry.emplace<AnimProgress>(ent, proj->animProgress);
-		registry.emplace<AnimParams>(ent, proj->animParams, proj->createFrame);
+		registry.emplace<AnimParams>(ent, proj->animParams);
+		registry.emplace<CreateFrame>(ent, proj->createFrame);
 		registry.emplace<ParticlePhys>(ent, proj->gravity, proj->airdrag);
 		registry.emplace<RenderData>(ent, proj->texture, nullptr, proj->colorMap, proj->directional);
 	}
@@ -169,7 +171,6 @@ void CProjectileHandler::AddECSProjectile(CSimpleParticleSystem* proj) {
 void CProjectileHandler::AddECSProjectile(CBitmapMuzzleFlame* proj) {
 	auto ent = registry.create();
 	registry.emplace<CBitmapMuzzleFlameTag>(ent);
-	registry.emplace<UpdateAnimParamsTag>(ent);
 	registry.emplace<AirLosTag>(ent);
 	
 	registry.emplace<FrontOffset>(ent, proj->frontOffset); // BitmapMuzzleFlameSpecific
@@ -188,7 +189,8 @@ void CProjectileHandler::AddECSProjectile(CBitmapMuzzleFlame* proj) {
 	registry.emplace<LifetimeSizeChange>(ent, proj->sizeGrowth); // growth done in Draw()
 	registry.emplace<Length>(ent, proj->length);
 	registry.emplace<AnimProgress>(ent, 0.0f);	
-	registry.emplace<AnimParams>(ent, proj->animParams, proj->createFrame);
+	registry.emplace<AnimParams>(ent, proj->animParams);
+	registry.emplace<CreateFrame>(ent, proj->createFrame);
 
 	registry.emplace<RenderData>(ent, proj->frontTexture, proj->sideTexture, proj->colorMap, false);
 }
@@ -208,8 +210,7 @@ void CProjectileHandler::AddECSProjectile(CDirtProjectile* proj) {
 	registry.emplace<AlphaDecayrate>(ent, proj->alphaFalloff);
 	registry.emplace<Sized>(ent, proj->size);
 	registry.emplace<SizeChange>(ent, 1.0, proj->sizeExpansion);
-	registry.emplace<AnimProgress>(ent, 0.0f);
-	registry.emplace<AnimParams>(ent, proj->animParams, proj->createFrame);
+	registry.emplace<CreateFrame>(ent, proj->createFrame);
 	registry.emplace<ParticlePhys>(ent, float3{0.0f, proj->mygravity, 0.0f}, proj->slowdown);
 	registry.emplace<RenderData>(ent, proj->texture, nullptr, nullptr, false);
 	registry.emplace<Color>(ent, proj->color);
@@ -230,8 +231,7 @@ void CProjectileHandler::AddECSProjectile(CExploSpikeProjectile* proj) {
 	registry.emplace<AlphaDecayrate>(ent, proj->alphaDecay);
 	registry.emplace<Width>(ent, proj->width);
 	registry.emplace<Direction>(ent, proj->dir);
-	registry.emplace<AnimProgress>(ent, 0.0f);
-	registry.emplace<AnimParams>(ent, proj->animParams, proj->createFrame);
+	registry.emplace<CreateFrame>(ent, proj->createFrame);
 	registry.emplace<Length>(ent, proj->length);
 	registry.emplace<LengthChange>(ent, proj->lengthGrowth);
 	//registry.emplace<RenderData>(ent, projectileDrawer->laserendtex, nullptr, nullptr, false);
@@ -259,10 +259,11 @@ void CProjectileHandler::AddECSProjectile(CHeatCloudProjectile* proj)
 	registry.emplace<MaxHeat>(ent, proj->maxheat);
 	
 	registry.emplace<Sized>(ent, proj->size);
-	registry.emplace<SizeChange>(ent, 1.0 /* proj->sizemod */, proj->sizeGrowth);
+	registry.emplace<SizeChange>(ent, 1.0 - proj->sizemod, proj->sizeGrowth);
+	registry.emplace<SizeModMod>(ent, 1.0 - proj->sizemodmod);
+	registry.emplace<CreateFrame>(ent, proj->createFrame);
+	registry.emplace<RenderData>(ent, proj->texture, nullptr, nullptr, false);
 	
-	registry.emplace<AnimProgress>(ent, 0.0f);
-	registry.emplace<AnimParams>(ent, proj->animParams, proj->createFrame);
 }
 
 void CProjectileHandler::AddECSProjectile(CMuzzleFlame* proj)
@@ -277,7 +278,6 @@ void CProjectileHandler::AddECSProjectile(CMuzzleFlame* proj)
 		registry.emplace<DrawOrder>(ent, proj->drawOrder, 0.0f);
 		registry.emplace<AlliedTeam>(ent, proj->allyteamID);
 		
-		//registry.emplace<Rotation>(ent, proj->rotVal, proj->rotVel);
 		registry.emplace<Direction>(ent, proj->randSmokeDir[i]);
 		
 		registry.emplace<Position>(ent, proj->pos);
@@ -286,9 +286,7 @@ void CProjectileHandler::AddECSProjectile(CMuzzleFlame* proj)
 		registry.emplace<LifetimeFlame>(ent, proj->age);
 		registry.emplace<Sized>(ent, proj->size);
 		
-		registry.emplace<AnimProgress>(ent, 0.0f);
-		registry.emplace<AnimParams>(ent, proj->animParams, proj->createFrame);
-		
+		registry.emplace<CreateFrame>(ent, proj->createFrame);
 		registry.emplace<ParticleIndex>(ent, i);
 	}
 }
@@ -318,8 +316,7 @@ void CProjectileHandler::AddECSProjectile(CSmokeProjectile* proj)
 	
 	registry.emplace<PositionWindChangeTag>(ent);
 	
-	registry.emplace<AnimProgress>(ent, 0.0f);
-	registry.emplace<AnimParams>(ent, proj->animParams, proj->createFrame);
+	registry.emplace<CreateFrame>(ent, proj->createFrame);
 	registry.emplace<Color>(ent, float3{proj->color, 0.0, 0.0});	
 
 	registry.emplace<RenderData>(ent, projectileDrawer->GetSmokeTexture(proj->textureNum), nullptr, nullptr, false);	
@@ -347,8 +344,7 @@ void CProjectileHandler::AddECSProjectile(CSmokeTrailProjectile* proj)
 	registry.emplace<Lifetime>(ent, 0.0);
 	registry.emplace<Decayrate>(ent, 1.0/proj->lifeTime);
 	
-	registry.emplace<AnimProgress>(ent, 0.0f);
-	registry.emplace<AnimParams>(ent, proj->animParams, proj->createFrame);
+	registry.emplace<CreateFrame>(ent, proj->createFrame);
 	registry.emplace<RenderData>(ent, proj->texture, nullptr, nullptr, false);
 	
 	registry.emplace<Color>(ent, float3{proj->color, 0.0, 0.0});
@@ -436,18 +432,19 @@ void CProjectileHandler::Init()
 	ecsSpawner[std::type_index(typeid(CBitmapMuzzleFlame))] = [&](CProjectile* p) {
 		AddECSProjectile(static_cast<CBitmapMuzzleFlame*>(p));
 	};
-	
+
 	ecsSpawner[std::type_index(typeid(CDirtProjectile))] = [&](CProjectile* p) {
 		AddECSProjectile(static_cast<CDirtProjectile*>(p));
 	};
+
 	ecsSpawner[std::type_index(typeid(CExploSpikeProjectile))] = [&](CProjectile* p) {
 		AddECSProjectile(static_cast<CExploSpikeProjectile*>(p));
 	};
-	
+
 	ecsSpawner[std::type_index(typeid(CHeatCloudProjectile))] = [&](CProjectile* p) {
 		AddECSProjectile(static_cast<CHeatCloudProjectile*>(p));
 	};
-	
+
 	ecsSpawner[std::type_index(typeid(CMuzzleFlame))] = [&](CProjectile* p) {
 		AddECSProjectile(static_cast<CMuzzleFlame*>(p));
 	};
@@ -555,8 +552,6 @@ void CProjectileHandler::UpdateProjectilesImpl()
 		// neither
 		++i;
 	}
-	
-	DrainUnsyncedProjectileQueue();
 
 	// WARNING: same as above but for p->Update()
 	if constexpr (synced) {
@@ -573,6 +568,7 @@ void CProjectileHandler::UpdateProjectilesImpl()
 		}
 	}
 	else {
+		DrainUnsyncedProjectileQueue();
 		//auto ecs_process_future = std::async(std::launch::async, updateECSParticles);
 		//auto ecs_process_future = ThreadPool::Enqueue(updateECSParticles);
 		

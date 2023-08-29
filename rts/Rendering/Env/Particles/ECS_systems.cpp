@@ -93,23 +93,24 @@ static void DrawSimpleParticleSystem(entt::entity ent, ViewT&& view)
 	const auto& lifetime = view.template get<const Lifetime>(ent).value;
 	const auto& data = view.template get<const RenderData>(ent);
 	const auto& rot = view.template get<const Rotation>(ent);
+	
 	const auto& animParams = view.template get<const AnimParams>(ent);
 	const auto& animProgress = view.template get<const AnimProgress>(ent);
-			
+	
+	unsigned char color[4];
+	data.colorMap->GetColor(color, lifetime);
+	
+	const float3 interPos = drawPos;
 	std::array<float3, 4> bounds;
+	
 	const bool shadowPass = (camera->GetCamType() == CCamera::CAMTYPE_SHADOW);
+	
 	if (data.directional && !shadowPass) {
 		const float3 zdir = (drawPos - camera->GetPos()).SafeANormalize();
 		float3 ydir = zdir.cross(speed);
 		const float yDirLen2 = ydir.SqLength();
 		ydir.SafeANormalize();
 		const float3 xdir = ydir.cross(zdir);
-
-		const float3 interPos = drawPos;
-
-		unsigned char color[4];
-		data.colorMap->GetColor(color, lifetime);
-
 		const float3* fwdDir = &zdir;
 
 		if (yDirLen2 > 0.001f) {
@@ -149,10 +150,7 @@ static void DrawSimpleParticleSystem(entt::entity ent, ViewT&& view)
 		return;
 	}
 
-	unsigned char color[4];
-	data.colorMap->GetColor(color, lifetime);
 
-	const float3 interPos = drawPos;
 	const float3 cameraRight = camera->GetRight() * size;
 	const float3 cameraUp    = camera->GetUp()    * size;
 
@@ -204,11 +202,10 @@ void UpdateDrawOrder(entt::view<entt::get_t<const DrawPosition, DrawOrder>> view
 	});
 }
 
-void UpdateAnimProgressSystem(entt::view<entt::get_t<const UpdateAnimParamsTag,
-							  AnimProgress, const AnimParams>> view)
+void UpdateAnimProgressSystem(entt::view<entt::get_t<AnimProgress, const AnimParams, const CreateFrame>> view)
 {
-	view.each([&](auto ent, auto& animProgress, const auto& animParams) {
-		const float t = (registry.ctx().get<PhysDelta>().frameNum - animParams.createFrame +
+	view.each([&](auto ent, auto& animProgress, const auto& animParams, const auto& createFrame) {
+		const float t = (registry.ctx().get<PhysDelta>().frameNum - createFrame.v +
 						 registry.ctx().get<PhysDelta>().timeOffset);
 		if (static_cast<int>(animParams.value.x) <= 1 && static_cast<int>(animParams.value.y) <= 1) {
 			animProgress.value = 0.0f;
@@ -235,10 +232,10 @@ void LifetimePositionAboveGroundSystem(entt::registry& reg) {
 	});
 }
 
-void RotationSystem(entt::view<entt::get_t<Rotation, const RotParams, const AnimParams>> view) {
+void RotationSystem(entt::view<entt::get_t<Rotation, const RotParams, const CreateFrame>> view) {
 	// TODO execute in Sim() or Draw()?
-	view.each([&](const auto ent, auto& rot, const auto& rotParams, auto& animParams) {
-		const float t = (registry.ctx().get<PhysDelta>().frameNum - animParams.createFrame + registry.ctx().get<PhysDelta>().timeOffset);
+	view.each([&](const auto ent, auto& rot, const auto& rotParams, const auto& createFrame) {
+		const float t = (registry.ctx().get<PhysDelta>().frameNum - createFrame.v + registry.ctx().get<PhysDelta>().timeOffset);
 		// rotParams.y is acceleration in angle per frame^2
 		rot.rotVel = rotParams.value.x + rotParams.value.y * t;
 		rot.rotVal = rotParams.value.z + rot.rotVel      * t;
@@ -270,7 +267,7 @@ static bool isParticleVisible(const Position& pos, const DrawPosition& drawPos,
 	if (!CanDrawProjectile(pos.value, allyteam, isAirLos))
 		return false;
 
-	bool drawRefraction = false; // TODO
+	bool drawRefraction = registry.ctx().get<DrawMode>().drawRefraction;
 	if (drawRefraction && (drawPos.value.y > drawRadius.value) /*!pro->IsInWater()*/)
 		return false;
 	// removed this to fix AMD particle drawing
@@ -287,6 +284,7 @@ static bool isParticleVisible(const Position& pos, const DrawPosition& drawPos,
 static void UpdateVisibilitySystem(entt::registry& reg)
 {
 	reg.clear<VisibleTag>();
+	// TODO all conditions should be met to make proj visible, not just one
 	
 	const CCamera* cam = CCameraHandler::GetActiveCamera();
 	
@@ -294,6 +292,10 @@ static void UpdateVisibilitySystem(entt::registry& reg)
 		if (cam->InView(drawPos.value, drawRadius.value)) {
 			reg.emplace_or_replace<VisibleTag>(ent);
 		}
+		
+		bool drawRefraction = registry.ctx().get<DrawMode>().drawRefraction;
+		if (!(drawRefraction && (drawPos.value.y > drawRadius.value)) /*!pro->IsInWater()*/)
+			reg.emplace_or_replace<VisibleTag>(ent);
 	});
 	
 	registry.view<const DrawPosition, const AlliedTeam>().each([&](auto ent, const auto& drawPos, const auto& allyteam) {
@@ -317,8 +319,15 @@ static void UpdateVisibilitySystem(entt::registry& reg)
 template <typename ViewT>
 static void DrawCBitmapMuzzleFlame(entt::entity ent, ViewT&& view)
 {
-	auto life = view.template get<const Lifetime>(ent).value;
+	/* 
+	float life = view.template get<const Lifetime>(ent).value;
 	life += view.template get<const Decayrate>(ent).value * globalRendering->timeOffset;
+	*/
+	const float t = (registry.ctx().get<PhysDelta>().frameNum - view.template get<const CreateFrame>(ent).v +
+					 registry.ctx().get<PhysDelta>().timeOffset);
+	
+	float life = t * view.template get<const Decayrate>(ent).value;
+	
 	const auto& sizeGrowth = view.template get<const LifetimeSizeChange>(ent).sizeGrowth;
 	const auto& size = view.template get<const Sized>(ent).value;
 	const auto& length = view.template get<const Length>(ent).value;
@@ -411,10 +420,8 @@ static void DrawCDirtProjectile(entt::entity ent, ViewT&& view)
 	auto& alpha = view.template get<const Alpha>(ent).v;
 	auto& texture = view.template get<const RenderData>(ent).texture;
 	auto& drawPos = view.template get<const DrawPosition>(ent).value;
-	auto& animParams = view.template get<const AnimParams>(ent);
-	auto& animProgress = view.template get<const AnimProgress>(ent);
 			
-	float3 animInfo = { animParams.value.x, animParams.value.y, animProgress.value };
+	float3 animInfo = { 1.0, 1.0, 0.0 };
 	float partAbove = (pos.y / (size * camera->GetUp().y));
 
 	if (partAbove < -1.0f)
@@ -453,9 +460,7 @@ static void DrawCExploSpikeProjectile(entt::entity ent, ViewT&& view)
 	auto& width = view.template get<const Width>(ent).value;
 	auto& drawPos = view.template get<const DrawPosition>(ent).value;
 	//auto& texture = view.template get<const RenderData>(ent).texture;
-	auto& animParams = view.template get<const AnimParams>(ent);
-	auto& animProgress = view.template get<const AnimProgress>(ent);
-	float3 animInfo = { animParams.value.x, animParams.value.y, animProgress.value };
+	float3 animInfo = { 1.0, 1.0, 0.0 };
 	
 	const float3 dif = (pos - camera->GetPos()).ANormalize();
 	const float3 dir2 = (dif.cross(dir)).ANormalize();
@@ -487,11 +492,11 @@ static void DrawCHeatCloudProjectile(entt::entity ent, ViewT&& view)
 	auto& pos = view.template get<const Position>(ent).value;
 	auto& heat = view.template get<const Heat>(ent).v;
 	auto& maxheat = view.template get<const MaxHeat>(ent).v;
+	auto& texture = view.template get<const RenderData>(ent).texture;
 
 	auto& drawPos = view.template get<const DrawPosition>(ent).value;
-	auto& animParams = view.template get<const AnimParams>(ent);
-	auto& animProgress = view.template get<const AnimProgress>(ent);
-	float3 animInfo = { animParams.value.x, animParams.value.y, animProgress.value };
+
+	float3 animInfo = { 1.0, 1.0, 0.0 };
 
 	auto& size = view.template get<const Sized>(ent).value;
 	auto& sizemod = view.template get<const SizeChange>(ent).sizeMod;
@@ -499,10 +504,8 @@ static void DrawCHeatCloudProjectile(entt::entity ent, ViewT&& view)
 
 	const auto& rot = view.template get<const Rotation>(ent);
 
-	auto texture = projectileDrawer->heatcloudtex;
-
 	unsigned char col[4];
-	const float dheat = std::max(0.0f, heat-globalRendering->timeOffset);
+	const float dheat = std::max(0.0f, heat - globalRendering->timeOffset);
 	const float alpha = (dheat / maxheat) * 255.0f;
 
 	col[0] = (unsigned char) alpha;
@@ -510,7 +513,7 @@ static void DrawCHeatCloudProjectile(entt::entity ent, ViewT&& view)
 	col[2] = (unsigned char) alpha;
 	col[3] = 1;//(dheat/maxheat)*255.0f;
 
-	const float drawsize = (size + sizeGrowth * globalRendering->timeOffset) * (1.0f - sizemod);
+	const float drawsize = (size + sizeGrowth * globalRendering->timeOffset) * sizemod;
 
 	const float3 ri = camera->GetRight();
 	const float3 up = camera->GetUp();
@@ -542,9 +545,7 @@ static void DrawCMuzzleFlame(entt::entity ent, ViewT&& view)
 	auto& age = view.template get<const LifetimeFlame>(ent).v;
 	
 	//auto& drawPos = view.template get<const DrawPosition>(ent).value;
-	auto& animParams = view.template get<const AnimParams>(ent);
-	auto& animProgress = view.template get<const AnimProgress>(ent);
-	float3 animInfo = { animParams.value.x, animParams.value.y, animProgress.value };
+	float3 animInfo = { 1.0, 1.0, 0.0 };
 
 	auto& size = view.template get<const Sized>(ent).value;
 	auto& dir = view.template get<const Direction>(ent).value;
@@ -609,9 +610,7 @@ static void DrawCSmokeProjectile(entt::entity ent, ViewT&& view)
 	auto& drawPos = view.template get<const DrawPosition>(ent).value;
 	auto& st = view.template get<const RenderData>(ent).texture;
 	
-	auto& animParams = view.template get<const AnimParams>(ent);
-	auto& animProgress = view.template get<const AnimProgress>(ent);
-	float3 animInfo = { animParams.value.x, animParams.value.y, animProgress.value };
+	float3 animInfo = { 1.0, 1.0, 0.0 };
 
 	unsigned char col[4];
 	unsigned char alpha = (unsigned char) ((1 - age) * 255);
@@ -643,14 +642,14 @@ static void DrawCSmokeTrailProjectile(entt::entity ent, ViewT&& view)
 	auto& decay = view.template get<const Decayrate>(ent).value;
 	auto& d = view.template get<const SmokeTrail>(ent);
 	auto& texture = view.template get<const RenderData>(ent).texture;
+	auto& createFrame = view.template get<const CreateFrame>(ent).v;
+	
 	auto color = view.template get<const Color>(ent).v.x;
 	
-	auto& animParams = view.template get<const AnimParams>(ent);
-	auto& animProgress = view.template get<const AnimProgress>(ent);
-	float3 animInfo = { animParams.value.x, animParams.value.y, animProgress.value };
+	float3 animInfo = { 1.0, 1.0, 0.0 };
 	
 	const float age = registry.ctx().get<PhysDelta>().frameNum + 
-					  registry.ctx().get<PhysDelta>().timeOffset - animParams.createFrame;
+					  registry.ctx().get<PhysDelta>().timeOffset - createFrame;
 	
 	const float invLifeTime = decay;
 
@@ -716,11 +715,11 @@ static void DrawCSmokeTrailProjectile(entt::entity ent, ViewT&& view)
 
 
 void PreDrawSystem() {
-	UpdateAnimProgressSystem(registry.view<const UpdateAnimParamsTag, AnimProgress, const AnimParams>());
+	UpdateAnimProgressSystem(registry.view<AnimProgress, const AnimParams, const CreateFrame>());
 	UpdateDrawPosSystem(registry.view<const Position, DrawPosition>(entt::exclude<Speed>));
 	UpdateDrawPosSpeedSystem(registry.view<const Position, const Speed, DrawPosition>());
 	UpdateDrawOrder(registry.view<const DrawPosition, DrawOrder>());
-	RotationSystem(registry.view<Rotation, const RotParams, const AnimParams>());
+	RotationSystem(registry.view<Rotation, const RotParams, const CreateFrame>());
 	UpdateVisibilitySystem(registry);
 	// TODO add update DrawRadius
 }

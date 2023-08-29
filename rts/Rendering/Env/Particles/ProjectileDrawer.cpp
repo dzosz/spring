@@ -780,6 +780,10 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 	unsortedProjectiles.clear();
 
 	registry.ctx().get<PhysDelta>().timeOffset = globalRendering->timeOffset;
+	registry.ctx().get<PhysDelta>().timeOffset = globalRendering->timeOffset;
+
+	registry.ctx().insert_or_assign(DrawMode{});
+	registry.ctx().get<DrawMode>().drawRefraction = drawRefraction;
 
 	{
 		{
@@ -906,6 +910,7 @@ void CProjectileDrawer::DrawShadowPassTransparent()
 	// 1) Render opaque objects into depth stencil texture from light's point of view - done elsewhere
 
 	// draw the model-less projectiles
+	registry.ctx().get<PhysDelta>().timeOffset = globalRendering->timeOffset;
 	DrawShadowSystem(); 
 	DrawProjectilesSetShadow(modellessProjectiles);
 

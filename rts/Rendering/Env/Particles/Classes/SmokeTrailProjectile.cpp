@@ -81,7 +81,7 @@ CSmokeTrailProjectile::CSmokeTrailProjectile(
 	
 	if (ECS_MODE)
 	{
-		// FIXME temporary ECS workaround required because of UpdateEndPos() external calls
+		// FIXME come up with a better way for sharing entity id, as UpdateEndPos() is used by non-ecs code
 		ent = entt::to_integral(registry.create());
 	}
 	

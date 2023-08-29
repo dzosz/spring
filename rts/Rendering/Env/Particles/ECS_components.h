@@ -84,9 +84,11 @@ struct AnimProgress {
 };
 
 struct AnimParams {
-	// TODO most particles have animSpeed=0 so no need to update, SPLIT
 	float3 value;
-	int createFrame;
+};
+
+struct CreateFrame {
+	int v;
 };
 
 struct Sized {
@@ -96,6 +98,10 @@ struct Sized {
 struct SizeChange {
 	float sizeMod;
 	float sizeGrowth;
+};
+
+struct SizeModMod {
+	float v;
 };
 
 struct LifetimeSizeChange {
@@ -109,6 +115,10 @@ struct AlliedTeam {
 struct PhysDelta {
 	float timeOffset; // globalRendering->timeOffset, time since last frame
 	int frameNum;
+};
+
+struct DrawMode {
+	bool drawRefraction;
 };
 
 struct Length {
@@ -176,7 +186,6 @@ struct CSmokeTrailProjectileTag{};
 
 // System behavior Tags
 struct GroundCollisionTag {};
-struct UpdateAnimParamsTag {};
 struct Destroyed {};
 struct PositionWindChangeTag{};
 struct CastShadowTag{};

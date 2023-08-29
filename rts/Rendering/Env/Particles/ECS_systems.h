@@ -20,6 +20,12 @@ inline void GrowSizeSystem(entt::view<entt::get_t<Sized, const SizeChange>> view
 	});
 }
 
+inline void UpdateSizeChangeSystem(entt::view<entt::get_t<SizeChange, const SizeModMod>> view) {
+	view.each([&](auto ent, auto& sizeChange, const auto& sizemodmod) {
+		sizeChange.sizeMod *= sizemodmod.v; 
+	});
+}
+
 inline void GrowLengthSystem(entt::view<entt::get_t<Length, const LengthChange>> view) {
 	view.each([&](auto ent, auto& length, const auto& lengthChange) {
 		length.value += lengthChange.v;
@@ -88,14 +94,12 @@ inline void SpeedParticlePhysSystem(entt::view<entt::get_t<Speed, const Particle
 	});
 }
 
-void RotationSystem(entt::view<entt::get_t<Rotation, const RotParams, const AnimParams>> view);
-
 extern entt::registry registry;
 inline bool UpdateEndPos(unsigned int entId, float3 p, float3 dir)
 {
 	auto ent = entt::entity(entId);
 	auto& view = registry;
-	if (!registry.valid(ent)) {
+	if (!entId) { //!view.valid(ent)) {
 		return false;
 	}
 	
