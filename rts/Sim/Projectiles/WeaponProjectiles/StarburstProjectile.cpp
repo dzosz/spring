@@ -282,6 +282,7 @@ void CStarburstProjectile::UpdateSmokeTrail()
 		return;
 
 	if (smokeTrail != nullptr) {
+		smokeTrail->UpdateEndPos(pos, dir);
 		oldSmoke = pos;
 		oldSmokeDir = dir;
 	}
