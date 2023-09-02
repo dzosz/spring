@@ -66,6 +66,8 @@ extern bool isEcsProj(const CProjectile* pro);
 // scope might happen after ~EventHandler (referenced by
 // ~EventClient)
 alignas(CProjectileDrawer) static std::byte projectileDrawerMem[sizeof(CProjectileDrawer)];
+bool DRAW_REFRACTION;
+bool DRAW_REFLECTION;
 
 
 void CProjectileDrawer::InitStatic() {
@@ -635,13 +637,15 @@ void CProjectileDrawer::DrawProjectileNow(CProjectile* pro, bool drawReflection,
 	// no-op if no model
 	DrawProjectileModel(pro);
 	
+	pro->SetSortDist(cam->ProjectedDistance(pro->pos));	
 	if (drawSorted && pro->drawSorted) {
-		int drawOrder = pro->drawOrder;		
-		pro->SetSortDist(cam->ProjectedDistance(pro->pos));
+		int drawOrder = pro->drawOrder;
+		
 		float sortDist = pro->sortDist;
 		sortedProjectiles.emplace_back(std::pair{std::pair{drawOrder, -sortDist}, pro});
 	} else {
-		unsortedProjectiles.emplace_back(pro);
+		//unsortedProjectiles.emplace_back(pro);
+		pro->Draw();
 	}
 
 }
@@ -768,6 +772,9 @@ void CProjectileDrawer::DrawFlyingPieces(int modelType) const
 
 
 void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
+	DRAW_REFLECTION = drawReflection;
+	DRAW_REFRACTION = drawRefraction;
+	
 	glPushAttrib(GL_ENABLE_BIT | GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT | GL_CURRENT_BIT);
 	glDisable(GL_BLEND);
 	glEnable(GL_TEXTURE_2D);
@@ -801,27 +808,31 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 
 		// note: model-less projectiles are NOT drawn by this call but
 		// only z-sorted (if the projectiles indicate they want to be)
+		{
+			ZoneScopedN("ProjectileDrawer::IsVisibleAndSort");	
 		DrawProjectilesSet(modellessProjectiles, drawReflection, drawRefraction);
+
 
 		if (wantDrawOrder)
 			std::sort(sortedProjectiles.begin(), sortedProjectiles.end(), CProjectileDrawOrderSortingPredicate);
 		else
 			std::sort(sortedProjectiles.begin(), sortedProjectiles.end(), CProjectileSortingPredicate);
+		}
 
 		if (ECS_MODE)
 		{
-			SCOPED_TIMER("Draw::World::Projectiles::ECS::PreDraw");
+			ZoneScopedN("Draw::World::Projectiles::ECS::PreDraw");
 			PreDrawSystem();
 		} // scoped timer
 		
 		if (ECS_MODE) // NOTE runtime switch works even during pause
 		{
-			SCOPED_TIMER("Draw::Projectiles::Draw");
+			ZoneScopedN("Draw::Projectiles::Draw");
 			DrawSystem(sortedProjectiles);		
 		}
 		else
 		{
-			SCOPED_TIMER("Draw::Projectiles::Draw");
+			ZoneScopedN("Draw::Projectiles::Draw");
 			for (auto p : sortedProjectiles) {
 				p.second->Draw();
 			}
@@ -840,6 +851,7 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 	const bool needSoften = (wantSoften > 0) && !drawReflection && !drawRefraction;
 
 	if (rb.ShouldSubmit()) {
+		ZoneScopedN("ProjectileDrawer::RealDraw");		
 		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 		/*
 		glEnable(GL_TEXTURE_2D);
@@ -869,6 +881,32 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 			fxShaders[needSoften]->SetUniform("softenThreshold", CProjectileDrawer::softenThreshold[0]);
 		}
 
+		auto& rb_indices = rb.GetIndcs();
+		extern std::vector<std::pair<int, float>> projOrders;
+		if (!drawSorted)
+		{
+			ZoneScopedN("ProjectileDrawer::NewSort");	
+			
+			static std::vector<uint32_t> new_indices;
+			new_indices.resize(rb_indices.size()/6); // each quad is 6 indices
+			assert(new_indices.size() == projOrders.size());
+			
+			std::iota(new_indices.begin(), new_indices.end(), 0); 
+			std::sort(new_indices.begin(), new_indices.end(), [&](const auto& l, const auto& r) {
+				return projOrders[l] < projOrders[r];
+			});
+			uint32_t baseIndex = 0;
+			for (auto& i : new_indices) {
+				// new_indices is now sorted
+				// apply change to array buffer
+				for (int j =0; j < 6 ; ++ j) {
+					rb_indices[baseIndex*6+j] += (i*4) - (baseIndex*4);
+				}
+				++baseIndex;
+			}			
+		}
+		projOrders.clear();	
+		
 		rb.DrawElements(GL_TRIANGLES);
 
 		fxShaders[needSoften]->Disable();

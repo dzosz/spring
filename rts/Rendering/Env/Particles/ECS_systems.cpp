@@ -297,7 +297,7 @@ static void UpdateVisibilitySystem(entt::registry& reg)
 		}
 		
 		bool drawRefraction = registry.ctx().get<DrawMode>().drawRefraction;
-		if (!(drawRefraction && (drawPos.value.y > drawRadius.value)) /*!pro->IsInWater()*/)
+		if (drawRefraction && (drawPos.value.y > drawRadius.value) /*!pro->IsInWater()*/)
 			return;
 		
 		// removed this to fix AMD particle drawing

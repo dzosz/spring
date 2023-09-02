@@ -30,11 +30,19 @@ CR_REG_METADATA(CExpGenSpawnable, (
 	CR_MEMBER_BEGINFLAG(CM_Config),
 		CR_MEMBER(rotParams),
 		CR_MEMBER(animParams),
+		CR_MEMBER(drawOrder),
+		CR_MEMBER(sortDist),
 	CR_MEMBER_ENDFLAG(CM_Config),
 	CR_IGNORED(animProgress)
 ))
 
-std::array<CExpGenSpawnable::SpawnableTuple, 14> CExpGenSpawnable::spawnables = {};
+using AllocFunc = CExpGenSpawnable*(*)();
+using GetMemberInfoFunc = bool(*)(SExpGenSpawnableMemberInfo&);
+using SpawnableTuple = std::tuple<std::string, GetMemberInfoFunc, AllocFunc>;
+
+static std::array<SpawnableTuple, 14> spawnables = {};
+std::vector<std::pair<int, float>> projOrders;
+
 
 CExpGenSpawnable::CExpGenSpawnable(const float3& pos, const float3& spd)
 	: CWorldObject(pos, spd)
@@ -114,6 +122,7 @@ bool CExpGenSpawnable::GetMemberInfo(SExpGenSpawnableMemberInfo& memberInfo)
 
 	CHECK_MEMBER_INFO_FLOAT3(CExpGenSpawnable, rotParams)
 	CHECK_MEMBER_INFO_FLOAT3(CExpGenSpawnable, animParams)
+	CHECK_MEMBER_INFO_INT(CExpGenSpawnable, drawOrder)
 
 	return false;
 }
@@ -124,14 +133,30 @@ TypedRenderBuffer<VA_TYPE_PROJ>& CExpGenSpawnable::GetPrimaryRenderBuffer()
 }
 
 template<typename Spawnable>
-CExpGenSpawnable::SpawnableTuple GetSpawnableEntryImpl()
+SpawnableTuple GetSpawnableEntryImpl()
 {
-	CExpGenSpawnable::SpawnableTuple entry{};
+	SpawnableTuple entry{};
 
 	return std::make_tuple(
 		std::string{ Spawnable::StaticClass()->name },
 		[](SExpGenSpawnableMemberInfo& memberInfo) { return Spawnable::GetMemberInfo(memberInfo); },
 		[]() { return static_cast<CExpGenSpawnable*>(projMemPool.alloc<Spawnable>()); }
+	);
+}
+
+template<>
+SpawnableTuple GetSpawnableEntryImpl<CSimpleParticleSystem>()
+{
+	SpawnableTuple entry{};
+
+	return std::make_tuple(
+		std::string{ CSimpleParticleSystem::StaticClass()->name },
+		[](SExpGenSpawnableMemberInfo& memberInfo) { return CSimpleParticleSystem::GetMemberInfo(memberInfo); },
+		[]() { 
+			// singleton. SPS spawns multiple particles within this instance
+			static CSimpleParticleSystem* p = projMemPool.alloc<CSimpleParticleSystem>();
+			return static_cast<CExpGenSpawnable*>(p);
+		}
 	);
 }
 
@@ -159,7 +184,7 @@ void CExpGenSpawnable::InitSpawnables()
 	static_assert(std::tuple_size<decltype(funcTuple)>::value == spawnables.size());
 
 	for (size_t i = 0; i < spawnables.size(); ++i) {
-		CExpGenSpawnable::SpawnableTuple entry;
+		SpawnableTuple entry;
 		const auto Functor = [&entry](auto&& func) { entry = func(); };
 		spring::tuple_exec_at(i, funcTuple, Functor);
 		spawnables[i] = entry;
@@ -224,4 +249,6 @@ void CExpGenSpawnable::AddEffectsQuad(const VA_TYPE_TC& tl, const VA_TYPE_TC& tr
 		{ br.pos, float3{ br.s, br.t, layer }, uvInfo, animInfo, br.c },
 		{ bl.pos, float3{ bl.s, bl.t, layer }, uvInfo, animInfo, bl.c }
 	);
+
+	projOrders.push_back(std::pair{drawOrder, -sortDist});
 }

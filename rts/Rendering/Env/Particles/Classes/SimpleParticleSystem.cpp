@@ -4,6 +4,10 @@
 
 #include "Game/Camera.h"
 #include "Game/GlobalUnsynced.h"
+#include "Sim/Misc/GlobalSynced.h"
+#include "Sim/Misc/TeamHandler.h"
+#include "Sim/Misc/LosHandler.h"
+#include "Sim/Units/Unit.h"
 #include "Rendering/GlobalRendering.h"
 #include "Rendering/Env/Particles/ProjectileDrawer.h"
 #include "Rendering/GL/RenderBuffers.h"
@@ -14,6 +18,358 @@
 #include "System/float3.h"
 #include "System/Log/ILog.h"
 #include "System/SpringMath.h"
+
+
+extern bool DRAW_REFLECTION;
+extern bool DRAW_REFRACTION;
+extern std::vector<std::pair<int, float>> projOrders;
+
+void AddEffectsQuad(const VA_TYPE_TC& tl, const VA_TYPE_TC& tr, const VA_TYPE_TC& br, const VA_TYPE_TC& bl,
+					const float3& animParams, const float& animProgress)
+{
+	float minS = std::numeric_limits<float>::max()   ; float minT = std::numeric_limits<float>::max()   ;
+	float maxS = std::numeric_limits<float>::lowest(); float maxT = std::numeric_limits<float>::lowest();
+	std::invoke([&](auto&&... arg) {
+		((minS = std::min(minS, arg.s)), ...);
+		((minT = std::min(minT, arg.t)), ...);
+		((maxS = std::max(maxS, arg.s)), ...);
+		((maxT = std::max(maxT, arg.t)), ...);
+	}, tl, tr, br, bl);
+
+	
+	auto& rb = CProjectile::GetPrimaryRenderBuffer();
+	//auto& rb = bufs[drawOrder];
+
+	const auto uvInfo = float4{ minS, minT, maxS - minS, maxT - minT };
+	const auto animInfo = float3{ animParams.x, animParams.y, animProgress };
+	constexpr float layer = 0.0f; //for future texture arrays
+
+	//pos, uvw, uvmm, col
+	rb.AddQuadTriangles(
+		{ tl.pos, float3{ tl.s, tl.t, layer }, uvInfo, animInfo, tl.c },
+		{ tr.pos, float3{ tr.s, tr.t, layer }, uvInfo, animInfo, tr.c },
+		{ br.pos, float3{ br.s, br.t, layer }, uvInfo, animInfo, br.c },
+		{ bl.pos, float3{ bl.s, bl.t, layer }, uvInfo, animInfo, bl.c }
+	);
+}
+
+class SoA
+{
+public:
+	std::vector<float3> pos;
+	std::vector<float3> speed;
+
+	std::vector<float> rotVal;
+	std::vector<float> rotVel;
+	std::vector<float> rotParams; // rotParams.y; //rot accel
+
+	std::vector<float> life;
+	std::vector<float> decayrate;
+	
+	std::vector<float> size;
+	std::vector<float> sizeGrowth;
+	std::vector<float> sizeMod;
+	
+	std::vector<float3> gravity;
+	std::vector<float> airdrag;
+	
+	std::vector<bool> visible;
+	std::vector<int> allyTeam;
+	
+	std::vector<float> drawRadius;
+	std::vector<int> drawOrder;
+		
+	void add(CSimpleParticleSystem& p, float3 offset) {
+		// LOG("xyz add %i", pos.size());
+		const float3 up = p.emitVector;
+		const float3 right = up.cross(float3(up.y, up.z, -up.x));
+		const float3 forward = up.cross(right);
+		
+		for (int i = 0 ; i < p.numParticles; ++i) {
+			float az = guRNG.NextFloat() * math::TWOPI;
+			float ay = (p.emitRot + (p.emitRotSpread * guRNG.NextFloat())) * math::DEG_TO_RAD;
+	
+			pos.push_back(offset);
+			speed.push_back(((up * p.emitMul.y) * fastmath::cos(ay) - ((right * p.emitMul.x) * fastmath::cos(az) - (forward * p.emitMul.z) * fastmath::sin(az)) * fastmath::sin(ay)) * (p.particleSpeed + (guRNG.NextFloat() * p.particleSpeedSpread)));
+			
+			rotVal.push_back(p.rotParams.z);
+			rotVel.push_back(p.rotParams.x); //initial rotation velocity
+			rotParams.push_back(p.rotParams.y);
+			
+			life.push_back(0.0f);
+			decayrate.push_back(1.0f / (p.particleLife + (guRNG.NextFloat() * p.particleLifeSpread)));
+			
+			size.push_back(p.particleSize + guRNG.NextFloat()*p.particleSizeSpread);
+			sizeGrowth.push_back(p.sizeGrowth);
+			sizeMod.push_back(p.sizeMod);
+			
+			gravity.push_back(p.gravity);
+			airdrag.push_back(p.airdrag);
+			
+			visible.push_back(true);
+			allyTeam.push_back(p.allyteamID);
+			
+			// draw
+			
+			//drawRadius = (particleSpeed + particleSpeedSpread) * (particleLife * particleLifeSpread);
+			
+			colorMap.emplace_back(p.colorMap);
+			color.emplace_back();
+			
+			interPos.emplace_back();
+			bounds.emplace_back();
+			texture.emplace_back(p.texture);
+			
+			anims.emplace_back(p.animParams);
+			aprogress.emplace_back(p.animProgress);
+			createFrame.emplace_back(p.createFrame);
+			
+			drawRadius.emplace_back(p.drawRadius);
+			drawOrder.emplace_back(p.drawOrder);			
+		}
+
+	}
+	
+	void update() {
+		check_dead();
+		
+		for (int i =0; i < pos.size(); ++ i) {
+			pos[i]    += speed[i];
+			speed[i]  += gravity[i];
+			speed[i]  *= airdrag[i];
+		}
+		for (int i =0; i < pos.size(); ++ i) {
+			rotVal[i] += rotVel[i];
+			rotVel[i] += rotParams[i];
+		}
+		for (int i =0; i < pos.size(); ++ i) {
+			life[i] += decayrate[i];
+		}
+		for (int i =0; i < pos.size(); ++ i) {
+			size[i] *= sizeMod[i];
+			size[i] += sizeGrowth[i];
+		}		
+	}
+	
+	void check_dead() {
+		for (int i =0; i < pos.size();) {
+			if (unlikely(life[i] >= 1.0)) {
+				erase(i);		
+			} else 
+			{
+				++i;
+			}			
+		}
+	}
+	
+	void erase(int idx) {
+		remove_from_container(idx, pos);
+		remove_from_container(idx, speed);
+		
+		remove_from_container(idx, rotVal);
+		remove_from_container(idx, rotVel);		
+		remove_from_container(idx, rotParams);
+		
+		remove_from_container(idx, life);
+		remove_from_container(idx, decayrate);
+		
+		remove_from_container(idx, size);
+		remove_from_container(idx, sizeGrowth);
+		remove_from_container(idx, sizeMod);
+		
+		remove_from_container(idx, gravity);
+		remove_from_container(idx, airdrag);
+		
+		remove_from_container(idx, visible);
+		remove_from_container(idx, allyTeam);
+		
+		// draw
+		remove_from_container(idx, colorMap);
+		remove_from_container(idx, color);
+		
+		remove_from_container(idx, interPos);		
+		remove_from_container(idx, bounds);
+		remove_from_container(idx, texture);		
+		
+		remove_from_container(idx, anims);
+		remove_from_container(idx, aprogress);
+		remove_from_container(idx, createFrame);
+		
+		remove_from_container(idx, drawRadius);
+		remove_from_container(idx, drawOrder);
+		
+	}
+	
+	template <typename T>
+	void remove_from_container(int idx, T&& cont) {
+		cont[idx] = cont.back();
+		cont.pop_back();
+	}
+	
+	
+	std::vector<CColorMap*> colorMap;
+	std::vector<std::array<unsigned char, 4>> color;
+	std::vector<float3> interPos;
+	
+	std::vector<std::array<float3, 4>> bounds;
+	std::vector<AtlasedTexture*> texture;
+	
+	std::vector<float3> anims;
+	std::vector<float> aprogress;
+	std::vector<int> createFrame;
+	
+	void draw() {
+		bool drawReflection = DRAW_REFLECTION;
+		bool drawRefraction = DRAW_REFRACTION;
+		updateAnimParams();
+		
+		for (int i =0; i < pos.size(); ++i) {
+			colorMap[i]->GetColor(color[i].data(), life[i]);
+		}
+		
+		float timeOffset = globalRendering->timeOffset;
+		for (int i =0; i < pos.size(); ++i) {
+			interPos[i] = pos[i] + speed[i] * timeOffset;
+		}
+		
+		// visibility
+		auto spectatingFullView = gu->spectatingFullView;
+		auto myAllyTeam = gu->myAllyTeam;
+		auto& th = teamHandler;
+		auto& lh = losHandler;
+		
+		for (int i =0; i < pos.size(); ++i) {
+			visible[i] = 	
+				 (spectatingFullView || (th.IsValidAllyTeam(allyTeam[i]) && 
+				  th.Ally(allyTeam[i], myAllyTeam) ||
+				lh->InLos(pos[i], myAllyTeam)) || 
+				  lh->InAirLos(pos[i], myAllyTeam));			
+		}
+		
+		if (DRAW_REFRACTION) {
+			for (int i =0; i < pos.size(); ++i) {
+				visible[i] = visible[i] && interPos[i].y <= drawRadius[i];
+			}
+		}
+		auto* cam = camera;
+		for (int i =0; i < pos.size(); ++i) {
+			visible[i] = visible[i] && cam->InView(interPos[i], drawRadius[i]);
+		}
+		
+		// bounds
+		/*
+		for (int i =0; i < pos.size(); ++i) {
+			const float3 cameraRight = cam->GetRight() * size[i];
+			const float3 cameraUp    = cam->GetUp()    * size[i];
+			
+			bounds[i] = {
+				-cameraRight - cameraUp,
+				 cameraRight - cameraUp,
+				 cameraRight + cameraUp,
+				-cameraRight + cameraUp
+			};
+		}*/
+		
+		// streflop alternative
+		const static auto safeANormalize = [&](const auto& ydir, const auto& yDirLen) {	
+			if (likely(yDirLen > float3::nrm_eps()))
+				return ydir * fastmath::isqrt_sse(yDirLen);
+			return ydir;
+		};
+	
+		auto cpos = cam->GetPos();
+		for (int i =0; i < pos.size(); ++i) {
+			if (!visible[i]) {
+				continue;
+			}
+			const float3 zdir = safeANormalize(pos[i] - cpos, (pos[i] - cpos).SqLength());
+			float3 ydir = zdir.cross(speed[i]);
+			float yDirLen2 = ydir.SqLength();
+			ydir = safeANormalize(ydir, yDirLen2);
+			// ydir.SafeANormalize();
+			const float3 xdir = ydir.cross(zdir);
+
+			if (yDirLen2 > 0.001f)
+			{
+				bounds[i] = {
+					-ydir * size[i] - xdir * size[i],
+					-ydir * size[i] + xdir * size[i],
+					 ydir * size[i] + xdir * size[i],
+					 ydir * size[i] - xdir * size[i]
+				};
+			} else {
+				const float3 cameraRight = camera->GetRight() * size[i];
+				const float3 cameraUp    = camera->GetUp()    * size[i];				
+				bounds[i] = {
+					-cameraRight - cameraUp,
+					 cameraRight - cameraUp,
+					 cameraRight + cameraUp,
+					-cameraRight + cameraUp
+				};
+			}
+		}		
+
+		// TODO branchless?
+		auto fwd = camera->GetForward();
+		for (int i =0; i < pos.size(); ++i) {
+			if (!visible[i]) {
+				continue;
+			}
+			if (math::fabs(rotVal[i]) > 0.01f) {
+				for (auto& b : bounds[i]) {
+					// faster fastmath than float3.rotate which uses strlflop
+					const float ca = fastmath::cos(rotVal[i]);
+					const float sa = fastmath::sin(rotVal[i]);				
+					b = b * ca + fwd.cross(b) * sa + fwd * fwd.dot(b) * (1.0f - ca);
+				}
+			}
+		}
+		
+		for (int i =0; i < pos.size(); ++i) {
+			if (!visible[i]) {
+				continue;
+			}
+			AddEffectsQuad(
+				{ interPos[i] + bounds[i][0], texture[i]->xstart, texture[i]->ystart, color[i].data() },
+				{ interPos[i] + bounds[i][1], texture[i]->xend,   texture[i]->ystart, color[i].data() },
+				{ interPos[i] + bounds[i][2], texture[i]->xend,   texture[i]->yend,   color[i].data() },
+				{ interPos[i] + bounds[i][3], texture[i]->xstart, texture[i]->yend,   color[i].data() },
+				anims[i], aprogress[i]
+			);
+			projOrders.push_back(std::pair{drawOrder[i], -cam->ProjectedDistance(pos[i])});
+		}	
+	}
+	
+	
+	void updateAnimParams() {
+		int gameFrame = gs->frameNum;
+		float timeOffset = globalRendering->timeOffset;
+		
+		for (int i =0; i < pos.size(); ++i)
+		{
+			auto& animParams = anims[i];
+			auto& animProgress = aprogress[i];
+			if (static_cast<int>(animParams.x) <= 1 && static_cast<int>(animParams.y) <= 1) {
+				animProgress = 0.0f;
+				continue;
+			}
+		
+			const float t = (gameFrame + timeOffset - createFrame[i]);
+			const float animSpeed = std::fabs(animParams.z);
+			
+			if (animParams.z < 0.0f) {
+				animProgress = 1.0f - std::fabs(std::fmod(t, 2.0f * animSpeed) / animSpeed - 1.0f);
+			}
+			else {
+				animProgress = std::fmod(t, animSpeed) / animSpeed;
+			}
+		}
+	}
+
+};
+
+static SoA SOA;
+
 
 CR_BIND_DERIVED(CSimpleParticleSystem, CProjectile, )
 
@@ -95,6 +451,11 @@ void CSimpleParticleSystem::Serialize(creg::ISerializer* s)
 
 void CSimpleParticleSystem::Draw()
 {
+	ZoneScopedN("SPS::Draw");
+	
+	SOA.draw();
+	return;
+	
 	UpdateAnimParams();
 
 	float3 zdir;
@@ -168,8 +529,13 @@ void CSimpleParticleSystem::Draw()
 
 void CSimpleParticleSystem::Update()
 {
-	deleteMe = true;
+	ZoneScopedN("SPS::Update");
+	
+	SOA.update();
+	deleteMe = false;
 
+	/*
+	deleteMe = true;
 	for (auto& p: particles) {
 		if (p.life < 1.0f) {
 			p.pos    += p.speed;
@@ -183,16 +549,34 @@ void CSimpleParticleSystem::Update()
 			deleteMe = false;
 		}
 	}
+	*/
 }
 
 void CSimpleParticleSystem::Init(const CUnit* owner, const float3& offset)
-{
-	CProjectile::Init(owner, offset);
+{	
+	static bool initialized = false;
+	if (!initialized) {
+		CProjectile::Init(owner, offset);
+	}
+	
+	if (owner != nullptr) {
+		// must be set before the AddProjectile call
+		ownerID = owner->id;
+		teamID = owner->team;
+		allyteamID =  teamHandler.IsValidTeam(teamID)? teamHandler.AllyTeam(teamID): -1;
+	}
+	
+	initialized = true;
+	createFrame = gs->frameNum;
+	
+	pos = pos + offset;
+	
+	alwaysVisible = true;
+	drawRadius = (particleSpeed + particleSpeedSpread) * (particleLife * particleLifeSpread);
+	
+	SOA.add(*this, offset);
 
-	const float3 up = emitVector;
-	const float3 right = up.cross(float3(up.y, up.z, -up.x));
-	const float3 forward = up.cross(right);
-
+	/*
 	// FIXME: should catch these earlier and for more projectile-types
 	if (colorMap == nullptr) {
 		colorMap = CColorMap::LoadFromFloatVector(std::vector<float>(8, 1.0f));
@@ -222,7 +606,7 @@ void CSimpleParticleSystem::Init(const CUnit* owner, const float3& offset)
 
 int CSimpleParticleSystem::GetProjectilesCount() const
 {
-	return numParticles;
+	return SOA.pos.size();
 }
 
 

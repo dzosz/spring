@@ -18,6 +18,7 @@ class CSimpleParticleSystem : public CProjectile
 
 public:
 	friend class CProjectileHandler;
+	friend class SoA;
 	CSimpleParticleSystem();
 	virtual ~CSimpleParticleSystem() { particles.clear(); }
 
