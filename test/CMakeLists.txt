@@ -351,6 +351,7 @@ endif()
 		list(APPEND test_libs atomic)
 	endif()
 	add_spring_test(${test_name} "${test_src}" "${test_libs}" "-DTHREADPOOL -DUNITSYNC")
+	target_include_directories(test_${test_name} PRIVATE ${ENGINE_SOURCE_DIR}/lib/tracy/public/)
 
 
 
