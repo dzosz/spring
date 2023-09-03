@@ -59,6 +59,10 @@ struct LifetimeFlame {
 	float v;
 };
 
+struct FlameSizeChange {
+	float v;
+};
+
 struct Heat {
 	float v;
 };
@@ -85,6 +89,13 @@ struct AnimProgress {
 
 struct AnimParams {
 	float3 value;
+};
+
+
+struct AnimParams2 {
+	float progress;
+	float3 params;
+	int createFrame;
 };
 
 struct CreateFrame {
@@ -129,8 +140,13 @@ struct LengthChange {
 	float v;
 };
 
-struct SmokeSizeChange {
+struct SmokeSized {
 	float v;
+};
+
+struct SmokeSizeChange {
+	float sizeGrowth;
+	float startSize;
 };
 
 struct Width {
@@ -171,6 +187,44 @@ struct SmokeTrail {
 	bool drawSegmented;
 	bool firstSegment;
 	bool lastSegment;
+};
+
+
+struct SimpleParticle {
+	float3 pos;
+	float3 speed;
+	float3 gravity;
+	float airdrag; 
+
+	float rotVal;
+	float rotVel;
+	float3 rotParams;
+
+	float life;
+	float decayrate;
+	float size;
+	float sizeGrowth;
+	float sizeMod;
+	int allyteam;
+};
+
+struct BitmapMuzzleFlame {
+	float3 pos;
+	float3 dir;
+	
+	float size;
+	float length;
+	float sizeGrowth;
+	float frontOffset;
+	int ttl;
+
+	float rotVal;
+	float rotVel;
+	float3 rotParams;
+
+	int allyteam;
+	
+	float decayrate;
 };
 
 // Drawable tags

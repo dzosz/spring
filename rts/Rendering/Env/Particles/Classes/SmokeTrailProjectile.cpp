@@ -15,6 +15,7 @@
 #include "lib/entt/entt.hpp"
 extern entt::registry registry;
 extern bool ECS_MODE;
+extern bool isEcsProj(const CProjectile* pro);
 
 CR_BIND_DERIVED(CSmokeTrailProjectile, CProjectile, )
 
@@ -79,10 +80,10 @@ CSmokeTrailProjectile::CSmokeTrailProjectile(
 
 	useAirLos |= ((pos.y - CGround::GetApproximateHeight(pos.x, pos.z)) > 10.0f);
 	
-	if (ECS_MODE)
+	if (ECS_MODE)// && isEcsProj(this))
 	{
 		// FIXME come up with a better way for sharing entity id, as UpdateEndPos() is used by non-ecs code
-		ent = entt::to_integral(registry.create());
+		//ent = entt::to_integral(registry.create());
 	}
 	
 }

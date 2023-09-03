@@ -5,6 +5,7 @@
 #include "lib/entt/fwd.hpp"
 #include "lib/entt/entity/registry.hpp"
 #include "System/SpringMath.h"
+#include "tracy/Tracy.hpp"
 
 static void DestroyEnt(entt::entity ent, entt::registry& reg) {
 	if (true) {
@@ -13,15 +14,16 @@ static void DestroyEnt(entt::entity ent, entt::registry& reg) {
 		reg.destroy(ent);
 	}
 }
-inline void GrowSizeSystem(entt::view<entt::get_t<Sized, const SizeChange>> view) {
-	// TODO optionally multiply by timeOffset if executed in Draw context
-	view.each([&](auto ent, auto& size, const auto& sizeChange) {
+
+inline void GrowSizeSystem(entt::registry& reg) {
+	reg.group<Sized, const SizeChange>().each([&] (const auto ent, auto& size, const auto& sizeChange) {
+//inline void GrowSizeSystem(entt::view<entt::get_t<Sized, const SizeChange>> view) {
 		size.value = size.value * sizeChange.sizeMod + sizeChange.sizeGrowth;
 	});
 }
 
-inline void UpdateSizeChangeSystem(entt::view<entt::get_t<SizeChange, const SizeModMod>> view) {
-	view.each([&](auto ent, auto& sizeChange, const auto& sizemodmod) {
+inline void UpdateSizeChangeSystem(entt::view<entt::get_t<const SizeModMod, SizeChange>> view) {
+	view.each([&](auto ent, const auto& sizemodmod, auto& sizeChange) {
 		sizeChange.sizeMod *= sizemodmod.v; 
 	});
 }
@@ -33,7 +35,9 @@ inline void GrowLengthSystem(entt::view<entt::get_t<Length, const LengthChange>>
 }
 
 inline void LifetimeSystem(entt::registry& reg) {
-	reg.view<Lifetime, const Decayrate>().each([&](const auto ent, auto& l, const auto& d) {
+	reg.group<Lifetime, const Decayrate>().each([&] (const auto ent, auto& l, const auto& d) {
+//inline void LifetimeSystem(entt::registry& reg) {
+//	reg.view<Lifetime, const Decayrate>().each([&](const auto ent, auto& l, const auto& d) {
 		l.value += d.value;
 		if (l.value >= 1.0)
 			DestroyEnt(ent, reg);
@@ -41,7 +45,7 @@ inline void LifetimeSystem(entt::registry& reg) {
 }
 
 inline void LifetimeHeatSystem(entt::registry& reg) {
-	reg.view<Heat, const HeatDecay>().each([&](const auto ent, auto& h, const auto& r) {
+	reg.group<Heat, const HeatDecay>().each([&] (const auto ent, auto& h, const auto& r) {
 		h.v -= r.v;
 		if (h.v <= 0.0)
 			DestroyEnt(ent, reg);
@@ -49,7 +53,7 @@ inline void LifetimeHeatSystem(entt::registry& reg) {
 }
 
 inline void LifetimeAlphaSystem(entt::registry& reg) {
-	reg.view<Alpha, const AlphaDecayrate>().each([&](const auto ent, auto& l, const auto& d) {
+	reg.group<Alpha, const AlphaDecayrate>().each([&] (auto ent, auto& l, const auto& d) {
 		l.v -= d.v;
 		if (l.v <= 0.0)
 			DestroyEnt(ent, reg);
@@ -57,18 +61,17 @@ inline void LifetimeAlphaSystem(entt::registry& reg) {
 }
 
 inline void LifetimeFlameSystem(entt::registry& reg) {
-	reg.view<LifetimeFlame, const Sized>().each([&](const auto ent, auto& l, const auto& d) {
+	reg.group<LifetimeFlame, const FlameSizeChange>().each([&](const auto ent, auto& l, const auto& change) {
 		l.v++;
-		if (l.v > 4+ d.value * 30)
+		if (l.v > 4+ change.v * 30)
 			DestroyEnt(ent, reg);
 	});
 }
 
-inline void GrowSmokeSizeSystem(entt::view<entt::get_t<Sized, const SmokeSizeChange>> view) {
-	view.each([&](auto ent, auto& s, const auto& smokeSize) {
-		auto startSize = smokeSize.v;
-		auto size = s.value;
-		s.value += (startSize - size) * 0.2f * (size < startSize);
+inline void GrowSmokeSizeSystem(entt::registry& reg) {
+	reg.group<SmokeSized, const SmokeSizeChange>().each([&](auto ent, auto& smokeSize, const auto& c) {
+		smokeSize.v += c.sizeGrowth;
+		smokeSize.v += (c.startSize - smokeSize.v) * 0.2f * (smokeSize.v < c.startSize);
 	});
 }
 
@@ -79,16 +82,52 @@ inline void DeleteDestroyedSystem(entt::registry& reg) {
 	reg.destroy(d.begin(), d.end());
 }
 
-inline void PositionSystem(entt::view<entt::get_t<Position, const Speed>> view) {
-	view.each([&](auto& p, const auto& s) {
+//inline void PositionSystem(entt::view<entt::get_t<Position, const Speed>> view) {
+inline void PositionSystem(entt::registry& reg) {
+	reg.group<Position, const Speed>().each([&] (auto ent, auto& p, const auto& s) {
 		p.value += s.value;
+		//s.value += phys.gravity;
+		//s.value *= phys.airdrag;
+	});
+}
+
+inline void UpdateSimpleParticleSystem(entt::registry& reg) {
+	ZoneScopedN("XYZ::UpdateSimpleParticleSystem");
+	reg.view<SimpleParticle>().each([&] (auto ent, auto& p) {
+		p.pos    += p.speed;
+		p.speed  += p.gravity;
+		p.speed  *= p.airdrag;
+		p.rotVal += p.rotVel;
+		p.rotVel += p.rotParams.y; //rot accel
+		p.life   += p.decayrate;
+		p.size    = p.size * p.sizeMod + p.sizeGrowth;
+		if (p.life >= 1.0) {
+			DestroyEnt(ent, reg);
+		}
+	});
+}
+
+inline void UpdateBitmapMuzzleFlame(entt::registry& reg) {
+	reg.view<BitmapMuzzleFlame>().each([&] (auto ent, auto& p) {
+		p.ttl--;
+		if (p.ttl <= 0) {
+			DestroyEnt(ent, reg);
+		}
 	});
 }
 
 void WindPositionSystem(entt::view<entt::get_t<const PositionWindChangeTag, Position, const Lifetime>> view);
 
+/*
 inline void SpeedParticlePhysSystem(entt::view<entt::get_t<Speed, const ParticlePhys>> view) {
 	view.each([&](const auto ent, auto& s, const auto& phys) {
+		s.value += phys.gravity;
+		s.value *= phys.airdrag;
+	});
+}
+*/
+inline void SpeedParticlePhysSystem(entt::registry& reg) {
+	reg.group<const ParticlePhys>(entt::get<Speed>).each([&](const auto ent, const auto& phys, auto& s) {
 		s.value += phys.gravity;
 		s.value *= phys.airdrag;
 	});

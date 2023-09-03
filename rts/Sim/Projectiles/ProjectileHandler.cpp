@@ -105,6 +105,10 @@ static void createECSTaskGraph() {
 
 	ecsTaskList.emplace<&PositionSystem>();
 	ecsTaskList.emplace<&SpeedParticlePhysSystem>();
+	
+	ecsTaskList.emplace<&UpdateSimpleParticleSystem>();
+	ecsTaskList.emplace<&UpdateBitmapMuzzleFlame>();
+	
 	// ecsTaskList.emplace<&RotationSystem>(); // done in Render() context?
 	ecsTaskList.emplace<&WindPositionSystem>();
 	
@@ -127,6 +131,31 @@ static void createECSTaskGraph() {
 	}
 }
 
+static void createECSGroups() { // for better iteration performance
+	/*
+	registry.group<Lifetime, const Decayrate>();
+	registry.group<Heat, const HeatDecay>();
+	registry.group<Alpha, const AlphaDecayrate>();	
+	registry.group<Sized, const SizeChange>();
+	registry.group<Position, const Speed>();
+	registry.group<const ParticlePhys>(entt::get<Speed>);
+	registry.group<SmokeSized, const SmokeSizeChange>();
+	registry.group<LifetimeFlame, const FlameSizeChange>();
+	*/
+	/*
+	registry.group<Position, const Speed, DrawPosition>();
+	//registry.group<const Position, DrawPosition>();
+	*/
+	
+	//registry.group<AnimProgress, const AnimParams, const CreateFrame>();	
+	//registry.group<const SimpleParticle>(entt::get<const DrawRadius, const RenderData, const AnimParams, const AnimProgress>);
+	//registry.group<const BitmapMuzzleFlame>(entt::get<const DrawRadius, const RenderData, const AnimParams, const AnimProgress, const CreateFrame>);
+	
+	//registry.group<Rotation, const RotParams>(entt::get<const CreateFrame>);
+	
+
+}
+
 static void updateECSParticles() {
 	// FIXME we can't execute on threadpool until we move all legacy projectiles into ECS
 	SCOPED_TIMER("Sim::Projectiles::Update::ECS");
@@ -140,7 +169,7 @@ static void updateECSParticles() {
 }
 
 } // unnamed namespace
-
+/*
 void CProjectileHandler::AddECSProjectile(CSimpleParticleSystem* proj) {
 	for (int i=0; i< proj->GetProjectilesCount(); ++i)
 	{
@@ -167,7 +196,35 @@ void CProjectileHandler::AddECSProjectile(CSimpleParticleSystem* proj) {
 		registry.emplace<RenderData>(ent, proj->texture, nullptr, proj->colorMap, proj->directional);
 	}
 }
+*/
+void CProjectileHandler::AddECSProjectile(CSimpleParticleSystem* proj) {
+	TracyPlot("drawOrdSPS", (float)proj->drawOrder);
+	
+	for (int i=0; i< proj->GetProjectilesCount(); ++i)
+	{
+		auto& particles = proj->particles;
+		auto ent = registry.create();
+		registry.emplace<SimpleParticleSystemTag>(ent);
+		auto& p = proj->particles[i];
+		registry.emplace<SimpleParticle>(ent,
+			p.pos,p.speed,proj->gravity, proj->airdrag,
+			p.rotVal, p.rotVel, proj->rotParams,
+			p.life, p.decayrate, p.size,
+			proj->sizeGrowth, proj->sizeMod, proj->allyteamID
+		);
+		
+		registry.emplace<DrawRadius>(ent, proj->drawRadius);
+		registry.emplace<DrawPosition>(ent, p.pos);//proj->drawPos);
+		registry.emplace<DrawOrder>(ent, proj->drawOrder, 0.0f);
+		registry.emplace<AlliedTeam>(ent, proj->allyteamID); // TODO maybe ignore this component if team is not set?
 
+		registry.emplace<AnimParams2>(ent, proj->animProgress, proj->animParams, proj->createFrame);
+
+		registry.emplace<RenderData>(ent, proj->texture, nullptr, proj->colorMap, proj->directional);
+	}
+}
+
+/*
 void CProjectileHandler::AddECSProjectile(CBitmapMuzzleFlame* proj) {
 	auto ent = registry.create();
 	registry.emplace<CBitmapMuzzleFlameTag>(ent);
@@ -193,6 +250,31 @@ void CProjectileHandler::AddECSProjectile(CBitmapMuzzleFlame* proj) {
 	registry.emplace<CreateFrame>(ent, proj->createFrame);
 
 	registry.emplace<RenderData>(ent, proj->frontTexture, proj->sideTexture, proj->colorMap, false);
+}*/
+
+void CProjectileHandler::AddECSProjectile(CBitmapMuzzleFlame* p) {
+	TracyPlot("drawOrdBitmap", (float)p->drawOrder);
+	auto ent = registry.create();
+	registry.emplace<CBitmapMuzzleFlameTag>(ent);
+	registry.emplace<AirLosTag>(ent);
+	
+	registry.emplace<BitmapMuzzleFlame>(ent,
+		p->pos, p->dir,
+		p->size,
+		p->length, p->sizeGrowth,
+		p->frontOffset,
+		p->ttl, p->rotVal, p->rotVel,
+		p->rotParams, p->allyteamID,
+		p->invttl);
+			
+	registry.emplace<DrawRadius>(ent, p->drawRadius);
+	registry.emplace<DrawPosition>(ent, p->drawPos);
+	registry.emplace<DrawOrder>(ent, p->drawOrder, 0.0f);
+
+	registry.emplace<AnimParams2>(ent, p->animProgress, p->animParams, p->createFrame);
+
+	registry.emplace<RenderData>(ent, p->frontTexture, p->sideTexture,
+								 p->colorMap, false);
 }
 
 void CProjectileHandler::AddECSProjectile(CDirtProjectile* proj) {
@@ -260,7 +342,7 @@ void CProjectileHandler::AddECSProjectile(CHeatCloudProjectile* proj)
 	
 	registry.emplace<Sized>(ent, proj->size);
 	registry.emplace<SizeChange>(ent, 1.0 - proj->sizemod, proj->sizeGrowth);
-	registry.emplace<SizeModMod>(ent, 1.0 - proj->sizemodmod);
+	//registry.emplace<SizeModMod>(ent, 1.0 - proj->sizemodmod);
 	registry.emplace<CreateFrame>(ent, proj->createFrame);
 	registry.emplace<RenderData>(ent, proj->texture, nullptr, nullptr, false);
 	
@@ -284,7 +366,7 @@ void CProjectileHandler::AddECSProjectile(CMuzzleFlame* proj)
 		registry.emplace<Speed>(ent, proj->speed);
 		
 		registry.emplace<LifetimeFlame>(ent, proj->age);
-		registry.emplace<Sized>(ent, proj->size);
+		registry.emplace<FlameSizeChange>(ent, proj->size);
 		
 		registry.emplace<CreateFrame>(ent, proj->createFrame);
 		registry.emplace<ParticleIndex>(ent, i);
@@ -310,9 +392,8 @@ void CProjectileHandler::AddECSProjectile(CSmokeProjectile* proj)
 	
 	registry.emplace<Lifetime>(ent, proj->age);
 	registry.emplace<Decayrate>(ent, proj->ageSpeed);
-	registry.emplace<Sized>(ent, proj->size);
-	registry.emplace<SizeChange>(ent, 1.0, proj->sizeExpansion);
-	registry.emplace<SmokeSizeChange>(ent, proj->startSize);
+	registry.emplace<SmokeSized>(ent, proj->size);
+	registry.emplace<SmokeSizeChange>(ent, proj->sizeExpansion, proj->startSize);
 	
 	registry.emplace<PositionWindChangeTag>(ent);
 	
@@ -432,7 +513,7 @@ void CProjectileHandler::Init()
 	ecsSpawner[std::type_index(typeid(CBitmapMuzzleFlame))] = [&](CProjectile* p) {
 		AddECSProjectile(static_cast<CBitmapMuzzleFlame*>(p));
 	};
-
+/*
 	ecsSpawner[std::type_index(typeid(CDirtProjectile))] = [&](CProjectile* p) {
 		AddECSProjectile(static_cast<CDirtProjectile*>(p));
 	};
@@ -456,8 +537,16 @@ void CProjectileHandler::Init()
 	ecsSpawner[std::type_index(typeid(CSmokeTrailProjectile))] = [&](CProjectile* p) {
 		AddECSProjectile(static_cast<CSmokeTrailProjectile*>(p));
 	};
+	*/
 	
+	createECSGroups();
 	createECSTaskGraph();
+	
+	TracyPlotConfig("drawOrdSPS", tracy::PlotFormatType::Number, true, false, tracy::Color::Aqua);
+	TracyPlotConfig("drawOrdBitmap", tracy::PlotFormatType::Number, true, false, tracy::Color::Aqua);
+	TracyPlotConfig("SPSType", tracy::PlotFormatType::Number, true, false, tracy::Color::Aqua);
+
+	
 }
 
 void CProjectileHandler::Kill()
@@ -572,10 +661,11 @@ void CProjectileHandler::UpdateProjectilesImpl()
 		//auto ecs_process_future = std::async(std::launch::async, updateECSParticles);
 		//auto ecs_process_future = ThreadPool::Enqueue(updateECSParticles);
 		
-		if (ECS_MODE) {
+		//if (ECS_MODE)
+		{
 			updateECSParticles();
 			//UpdateECSParticlesMT();
-			return;
+			//return;
 		}
 		
 		size_t s = pc.size();
