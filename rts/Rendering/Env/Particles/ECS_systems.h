@@ -1,9 +1,9 @@
 #pragma once
 
 #include "ECS_components.h"
-#include "lib/entt/entity/view.hpp"
-#include "lib/entt/fwd.hpp"
-#include "lib/entt/entity/registry.hpp"
+#include "lib/entt/src/entt/entity/view.hpp"
+#include "lib/entt/src/entt/fwd.hpp"
+#include "lib/entt/src/entt/entity/registry.hpp"
 #include "System/SpringMath.h"
 #include "tracy/Tracy.hpp"
 
@@ -133,11 +133,11 @@ inline void SpeedParticlePhysSystem(entt::registry& reg) {
 	});
 }
 
-extern entt::registry registry;
+extern entt::registry projectileRegistry;
 inline bool UpdateEndPos(unsigned int entId, float3 p, float3 dir)
 {
 	auto ent = entt::entity(entId);
-	auto& view = registry;
+	auto& view = projectileRegistry;
 	if (!entId) { //!view.valid(ent)) {
 		return false;
 	}

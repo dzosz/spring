@@ -50,11 +50,11 @@ To do:
 
 #include <functional>
 
-#include "lib/entt/entt.hpp"
+#include "lib/entt/src/entt/entt.hpp"
 
-extern entt::registry registry;
+extern entt::registry projectileRegistry;
 
-extern std::vector<std::pair<int, float>> projOrders;
+extern std::vector<std::pair<int, float>> enqueuedProjectilesDrawOrderData;
 
 namespace {
 static void AddEffectsQuad(int drawOrder, float sortDist, const VA_TYPE_TC& tl, const VA_TYPE_TC& tr, const VA_TYPE_TC& br, const VA_TYPE_TC& bl, const float3& animInfo)
@@ -272,7 +272,7 @@ static void DrawSimpleParticleSystem(ViewT&& view)
 
 	if (math::fabs(d.rotVal) > 0.01f) {
 		for (auto& b : bounds)
-			b = b.rotate(d.rotVal, camera->GetForward());
+			b = b.rotate<false>(d.rotVal, camera->GetForward());
 	}
 
 	AddEffectsQuad(drawOrder, camera->ProjectedDistance(d.pos),
@@ -303,8 +303,8 @@ static void DrawCBitmapMuzzleFlame(ViewT&& view)
 		return;
 	}	
 	
-	const float t = (registry.ctx().get<PhysDelta>().frameNum - a.createFrame +
-								 registry.ctx().get<PhysDelta>().timeOffset);
+	const float t = (projectileRegistry.ctx().at<PhysDelta>().frameNum - a.createFrame +
+								 projectileRegistry.ctx().at<PhysDelta>().timeOffset);
 	// rotParams.y is acceleration in angle per frame^2
 	float rotVel = d.rotParams.x + d.rotParams.y * t;
 	float rotVal = d.rotParams.z + rotVel      * t;
@@ -346,7 +346,7 @@ static void DrawCBitmapMuzzleFlame(ViewT&& view)
 
 	if (math::fabs(d.rotVal) > 0.01f) {
 		for (auto& b : bounds)
-			b = b.rotate(d.rotVal, dir);
+			b = b.rotate<false>(d.rotVal, dir);
 	}
 
 	float3 animInfo = { a.params.x, a.params.y, a.progress };
@@ -390,7 +390,7 @@ template <typename ViewT>
 void UpdateDrawPosSpeedSystem(ViewT&& view)
 //void UpdateDrawPosSpeedSystem(entt::view<entt::get_t<const Position, const Speed, DrawPosition>> view)
 {
-	const float t = registry.ctx().get<PhysDelta>().timeOffset;
+	const float t = projectileRegistry.ctx().at<PhysDelta>().timeOffset;
 	view.each([&](
 		auto ent, const Position& pos, const Speed& speed, DrawPosition& drawPos) {
 		drawPos.value = (speed.value.w != 0.0f) ? (pos.value + speed.value * t) : pos.value;
@@ -419,8 +419,8 @@ template <typename T>
 void UpdateAnimProgressSystem(T&& view)
 {
 	view.each([&](auto ent, auto& a) {
-		const float t = (registry.ctx().get<PhysDelta>().frameNum - a.createFrame +
-						 registry.ctx().get<PhysDelta>().timeOffset);
+		const float t = (projectileRegistry.ctx().at<PhysDelta>().frameNum - a.createFrame +
+						 projectileRegistry.ctx().at<PhysDelta>().timeOffset);
 		if (static_cast<int>(a.params.x) <= 1 && static_cast<int>(a.params.y) <= 1) {
 			a.progress = 0.0f;
 			return;
@@ -452,7 +452,7 @@ void RotationSystem(T&& view)
 {
 	// TODO execute in Sim() or Draw()?
 	view.each([&](const auto ent, auto& rot, const auto& rotParams, const auto& createFrame) {
-		const float t = (registry.ctx().get<PhysDelta>().frameNum - createFrame.v + registry.ctx().get<PhysDelta>().timeOffset);
+		const float t = (projectileRegistry.ctx().at<PhysDelta>().frameNum - createFrame.v + projectileRegistry.ctx().at<PhysDelta>().timeOffset);
 		// rotParams.y is acceleration in angle per frame^2
 		rot.rotVel = rotParams.value.x + rotParams.value.y * t;
 		rot.rotVal = rotParams.value.z + rot.rotVel      * t;
@@ -484,7 +484,7 @@ static bool isParticleVisible(const float3& pos, const float3& drawPos,
 	if (!CanDrawProjectile(pos, allyteam, isAirLos))
 		return false;
 
-	bool drawRefraction = registry.ctx().get<DrawMode>().drawRefraction;
+	bool drawRefraction = projectileRegistry.ctx().at<DrawMode>().drawRefraction;
 	if (drawRefraction && (drawPos.y > drawRadius) /*!pro->IsInWater()*/)
 		return false;
 	// removed this to fix AMD particle drawing
@@ -503,9 +503,9 @@ static void UpdateVisibilitySystem(entt::registry& reg)
 	reg.clear<VisibleTag>();
 	const CCamera* cam = CCameraHandler::GetActiveCamera();
 	
-	registry.view<const DrawPosition, const DrawRadius, const AlliedTeam>().each(
+	projectileRegistry.view<const DrawPosition, const DrawRadius, const AlliedTeam>().each(
 				[&](auto ent, const auto& drawPos, const auto& drawRadius, const auto& allyteam) {
-		bool isAirLos = registry.all_of<AirLosTag>(ent);
+		bool isAirLos = projectileRegistry.all_of<AirLosTag>(ent);
 		if (!CanDrawProjectile(drawPos.value, allyteam.value, isAirLos)) {
 			return;
 		}
@@ -513,7 +513,7 @@ static void UpdateVisibilitySystem(entt::registry& reg)
 			return;
 		}
 		
-		bool drawRefraction = registry.ctx().get<DrawMode>().drawRefraction;
+		bool drawRefraction = projectileRegistry.ctx().at<DrawMode>().drawRefraction;
 		if (drawRefraction && (drawPos.value.y > drawRadius.value) /*!pro->IsInWater()*/)
 			return;
 		
@@ -532,8 +532,8 @@ static void DrawCBitmapMuzzleFlame(entt::entity ent, ViewT&& view)
 	
 	//float life = view.template get<const Lifetime>(ent).value;
 	//life += view.template get<const Decayrate>(ent).value * globalRendering->timeOffset;
-	const float t = (registry.ctx().get<PhysDelta>().frameNum - view.template get<const CreateFrame>(ent).v +
-					 registry.ctx().get<PhysDelta>().timeOffset);
+	const float t = (projectileRegistry.ctx().get<PhysDelta>().frameNum - view.template get<const CreateFrame>(ent).v +
+					 projectileRegistry.ctx().get<PhysDelta>().timeOffset);
 	
 	float life = t * view.template get<const Decayrate>(ent).value;
 	
@@ -554,7 +554,7 @@ static void DrawCBitmapMuzzleFlame(entt::entity ent, ViewT&& view)
 	colorMap->GetColor(col, life);
 	
 	auto& pos = view.template get<const Position>(ent).value;
-	auto& frontOffset = registry.get<const FrontOffset>(ent).value;	
+	auto& frontOffset = projectileRegistry.get<const FrontOffset>(ent).value;	
 	auto dir = view.template get<const Direction>(ent).value;
 	float3 fpos = pos + dir * frontOffset * ilength;
 	
@@ -736,7 +736,7 @@ static void DrawCHeatCloudProjectile(entt::entity ent, ViewT&& view)
 
 	if (math::fabs(rot.rotVal) > 0.01f) {
 		for (auto& b : bounds)
-			b = b.rotate(rot.rotVal, camera->GetForward());
+			b = b.rotate<false>(rot.rotVal, camera->GetForward());
 	}
 	AddEffectsQuad(
 			{ drawPos + bounds[0], texture->xstart, texture->ystart, col },
@@ -857,8 +857,8 @@ static void DrawCSmokeTrailProjectile(entt::entity ent, ViewT&& view)
 	
 	float3 animInfo = { 1.0, 1.0, 0.0 };
 	
-	const float age = registry.ctx().get<PhysDelta>().frameNum + 
-					  registry.ctx().get<PhysDelta>().timeOffset - createFrame;
+	const float age = projectileRegistry.ctx().at<PhysDelta>().frameNum + 
+					  projectileRegistry.ctx().at<PhysDelta>().timeOffset - createFrame;
 	
 	const float invLifeTime = decay;
 
@@ -925,33 +925,33 @@ static void DrawCSmokeTrailProjectile(entt::entity ent, ViewT&& view)
 
 void PreDrawSystem() {
 	ZoneScopedN("XYZ::PreDrawSystem");
-	UpdateAnimProgressSystem(registry.view<AnimParams2>()); 
-	//UpdateDrawPosSystem(registry.view<const Position, DrawPosition>(entt::exclude<Speed>));
-	//UpdateDrawPosSpeedSystem(registry.view<const Position, const Speed, DrawPosition>());
-	//UpdateDrawOrder(registry.view<const DrawPosition, DrawOrder>());
-	RotationSystem(registry.group<Rotation, const RotParams>(entt::get<const CreateFrame>));
-	//UpdateVisibilitySystem(registry);
+	UpdateAnimProgressSystem(projectileRegistry.view<AnimParams2>()); 
+	//UpdateDrawPosSystem(projectileRegistry.view<const Position, DrawPosition>(entt::exclude<Speed>));
+	//UpdateDrawPosSpeedSystem(projectileRegistry.view<const Position, const Speed, DrawPosition>());
+	//UpdateDrawOrder(projectileRegistry.view<const DrawPosition, DrawOrder>());
+	RotationSystem(projectileRegistry.group<Rotation, const RotParams>(entt::get<const CreateFrame>));
+	//UpdateVisibilitySystem(projectileRegistry);
 	// TODO add update DrawRadius
 }
 
 template <typename ViewT>
 static void DispatchDrawingECS(entt::entity ent, ViewT&& view) {
-	/*if (registry.all_of<SimpleParticleSystemTag>(ent)) {
-		DrawSimpleParticleSystem(ent, registry);
-	} else if (registry.all_of<CBitmapMuzzleFlameTag>(ent)) {
-		DrawCBitmapMuzzleFlame(ent, registry);
-	} else */ if (registry.all_of<CDirtProjectileTag>(ent)) {
-		DrawCDirtProjectile(ent, registry);
-	} else if (registry.all_of<CExploSpikeProjectileTag>(ent)) {
-		DrawCExploSpikeProjectile(ent, registry);
-	} else if (registry.all_of<CHeatCloudProjectileTag>(ent)) {
-		DrawCHeatCloudProjectile(ent, registry);
-	} else if (registry.all_of<CMuzzleFlameTag>(ent)) {
-		DrawCMuzzleFlame(ent, registry);
-	} else if (registry.all_of<CSmokeProjectileTag>(ent)) {
-		DrawCSmokeProjectile(ent, registry);
-	} else if (registry.all_of<CSmokeTrailProjectileTag>(ent)) {
-		DrawCSmokeTrailProjectile(ent, registry);
+	/*if (projectileRegistry.all_of<SimpleParticleSystemTag>(ent)) {
+		DrawSimpleParticleSystem(ent, projectileRegistry);
+	} else if (projectileRegistry.all_of<CBitmapMuzzleFlameTag>(ent)) {
+		DrawCBitmapMuzzleFlame(ent, projectileRegistry);
+	} else */ if (projectileRegistry.all_of<CDirtProjectileTag>(ent)) {
+		DrawCDirtProjectile(ent, projectileRegistry);
+	} else if (projectileRegistry.all_of<CExploSpikeProjectileTag>(ent)) {
+		DrawCExploSpikeProjectile(ent, projectileRegistry);
+	} else if (projectileRegistry.all_of<CHeatCloudProjectileTag>(ent)) {
+		DrawCHeatCloudProjectile(ent, projectileRegistry);
+	} else if (projectileRegistry.all_of<CMuzzleFlameTag>(ent)) {
+		DrawCMuzzleFlame(ent, projectileRegistry);
+	} else if (projectileRegistry.all_of<CSmokeProjectileTag>(ent)) {
+		DrawCSmokeProjectile(ent, projectileRegistry);
+	} else if (projectileRegistry.all_of<CSmokeTrailProjectileTag>(ent)) {
+		DrawCSmokeTrailProjectile(ent, projectileRegistry);
 	}
 }
 
@@ -962,20 +962,20 @@ static void DispatchDrawingECS(entt::entity ent, ViewT&& view) {
 void DrawSystem(const std::vector<std::pair<std::pair<int, float>, CProjectile*>>& sortedProj)
 {
 	/*
-	registry.sort<DrawOrder>([](const auto &lhs, const auto &rhs) {
+	projectileRegistry.sort<DrawOrder>([](const auto &lhs, const auto &rhs) {
 		return std::pair(lhs.drawOrder, lhs.distanceFromCamera) < std::pair(rhs.drawOrder, rhs.distanceFromCamera);
 	});
 	*/
 
 	auto projIt = sortedProj.begin();
-	registry.view<const DrawOrder, const VisibleTag>().each([&](auto ent, const auto& drawOrder) {
+	projectileRegistry.view<const DrawOrder, const VisibleTag>().each([&](auto ent, const auto& drawOrder) {
 		const auto dist = std::pair{drawOrder.drawOrder, drawOrder.distanceFromCamera};
 		while (projIt != sortedProj.end() && projIt->first < dist) {
 			projIt->second->Draw();
 			++projIt;
 		}
 
-		DispatchDrawingECS(ent, registry);
+		DispatchDrawingECS(ent, projectileRegistry);
 	});
 
 	while (projIt != sortedProj.end()) {
@@ -983,17 +983,17 @@ void DrawSystem(const std::vector<std::pair<std::pair<int, float>, CProjectile*>
 		++projIt;
 	}
 	
-	DrawSimpleParticleSystem(registry.view<const SimpleParticle, const DrawRadius, const RenderData, const AnimParams2, const DrawOrder>());
-	//DrawSimpleParticleSystem(registry.group<const SimpleParticle>(entt::get_t<const DrawRadius, const RenderData, const AnimParams, const AnimProgress>()));
+	DrawSimpleParticleSystem(projectileRegistry.view<const SimpleParticle, const DrawRadius, const RenderData, const AnimParams2, const DrawOrder>());
+	//DrawSimpleParticleSystem(projectileRegistry.group<const SimpleParticle>(entt::get_t<const DrawRadius, const RenderData, const AnimParams, const AnimProgress>()));
 	
-	DrawCBitmapMuzzleFlame(registry.view<const BitmapMuzzleFlame, const DrawRadius, const RenderData, const AnimParams2, const DrawOrder>());
-	//DrawCBitmapMuzzleFlame(registry.view<const BitmapMuzzleFlame>(entt::get_t<const DrawRadius, const RenderData, const AnimParams, const AnimProgress, const CreateFrame>()));
+	DrawCBitmapMuzzleFlame(projectileRegistry.view<const BitmapMuzzleFlame, const DrawRadius, const RenderData, const AnimParams2, const DrawOrder>());
+	//DrawCBitmapMuzzleFlame(projectileRegistry.view<const BitmapMuzzleFlame>(entt::get_t<const DrawRadius, const RenderData, const AnimParams, const AnimProgress, const CreateFrame>()));
 
 }
 
 void DrawShadowSystem()
 {
-	registry.view<const VisibleTag, const CastShadowTag>().each([&](auto ent) {
-		DispatchDrawingECS(ent, registry);
+	projectileRegistry.view<const VisibleTag, const CastShadowTag>().each([&](auto ent) {
+		DispatchDrawingECS(ent, projectileRegistry);
 	});
 }

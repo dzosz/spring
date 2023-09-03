@@ -22,7 +22,6 @@
 #include "System/Matrix44f.h"
 #include "System/SpringMath.h"
 
-#include "lib/entt/entt.hpp"
 #include "Rendering/Env/Particles/ECS_systems.h"
 
 static constexpr int   SMOKE_TIME   = 40;
@@ -176,7 +175,7 @@ void CPieceProjectile::Collision(CUnit* unit, CFeature* feature)
 				SMOKE_COLOR,
 				projectileDrawer->smoketrailtex
 			);
-			ent = entt::to_integral(smokeTrail->ent);
+			smokeTrail->ent;
 			if (ent)
 				smokeTrail = nullptr;
 		}

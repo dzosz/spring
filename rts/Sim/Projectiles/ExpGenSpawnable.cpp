@@ -143,7 +143,7 @@ SpawnableTuple GetSpawnableEntryImpl()
 		[]() { return static_cast<CExpGenSpawnable*>(projMemPool.alloc<Spawnable>()); }
 	);
 }
-
+/*
 template<>
 SpawnableTuple GetSpawnableEntryImpl<CSimpleParticleSystem>()
 {
@@ -159,7 +159,7 @@ SpawnableTuple GetSpawnableEntryImpl<CSimpleParticleSystem>()
 		}
 	);
 }
-
+*/
 #define MAKE_FUNCTIONS_TUPLE(Func) \
 std::make_tuple( \
 	Func<CExpGenSpawner        >, \

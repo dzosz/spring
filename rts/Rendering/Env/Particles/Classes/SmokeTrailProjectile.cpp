@@ -12,8 +12,8 @@
 #include "Sim/Misc/GlobalSynced.h"
 #include "System/SpringMath.h"
 
-#include "lib/entt/entt.hpp"
-extern entt::registry registry;
+#include "lib/entt/src/entt/entt.hpp"
+extern entt::registry projectileRegistry;
 extern bool ECS_MODE;
 extern bool isEcsProj(const CProjectile* pro);
 
@@ -83,7 +83,7 @@ CSmokeTrailProjectile::CSmokeTrailProjectile(
 	if (ECS_MODE)// && isEcsProj(this))
 	{
 		// FIXME come up with a better way for sharing entity id, as UpdateEndPos() is used by non-ecs code
-		//ent = entt::to_integral(registry.create());
+		//ent = entt::to_integral(projectileRegistry.create());
 	}
 	
 }

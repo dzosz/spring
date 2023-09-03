@@ -54,11 +54,11 @@ static bool CProjectileSortingPredicate(const std::pair<std::pair<float, float>,
 
 CProjectileDrawer* projectileDrawer = nullptr;
 
-#include "lib/entt/entt.hpp"
+#include "lib/entt/src/entt/entt.hpp"
 #include "Rendering/Env/Particles/ECS_systems.h"
 
 
-extern entt::registry registry; // simple particle system
+extern entt::registry projectileRegistry; // simple particle system
 extern bool ECS_MODE;
 extern bool isEcsProj(const CProjectile* pro);
 
@@ -786,11 +786,11 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 	sortedProjectiles.clear();
 	unsortedProjectiles.clear();
 
-	registry.ctx().get<PhysDelta>().timeOffset = globalRendering->timeOffset;
-	registry.ctx().get<PhysDelta>().timeOffset = globalRendering->timeOffset;
+	projectileRegistry.ctx().at<PhysDelta>().timeOffset = globalRendering->timeOffset;
+	projectileRegistry.ctx().at<PhysDelta>().timeOffset = globalRendering->timeOffset;
 
-	registry.ctx().insert_or_assign(DrawMode{});
-	registry.ctx().get<DrawMode>().drawRefraction = drawRefraction;
+	projectileRegistry.ctx().emplace<DrawMode>();
+	projectileRegistry.ctx().at<DrawMode>().drawRefraction = drawRefraction;
 
 	{
 		{
@@ -949,7 +949,7 @@ void CProjectileDrawer::DrawShadowPassTransparent()
 	// 1) Render opaque objects into depth stencil texture from light's point of view - done elsewhere
 
 	// draw the model-less projectiles
-	registry.ctx().get<PhysDelta>().timeOffset = globalRendering->timeOffset;
+	projectileRegistry.ctx().at<PhysDelta>().timeOffset = globalRendering->timeOffset;
 	DrawShadowSystem(); 
 	DrawProjectilesSetShadow(modellessProjectiles);
 

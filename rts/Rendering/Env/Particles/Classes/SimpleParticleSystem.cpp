@@ -19,6 +19,8 @@
 #include "System/Log/ILog.h"
 #include "System/SpringMath.h"
 
+#include "System/BranchPrediction.h"
+
 
 extern bool DRAW_REFLECTION;
 extern bool DRAW_REFRACTION;
@@ -151,7 +153,7 @@ public:
 	
 	void check_dead() {
 		for (int i =0; i < pos.size();) {
-			if (unlikely(life[i] >= 1.0)) {
+			if unlikely(life[i] >= 1.0) {
 				erase(i);		
 			} else 
 			{
@@ -270,8 +272,9 @@ public:
 		
 		// streflop alternative
 		const static auto safeANormalize = [&](const auto& ydir, const auto& yDirLen) {	
-			if (likely(yDirLen > float3::nrm_eps()))
+			if likely(yDirLen > float3::nrm_eps()) {
 				return ydir * fastmath::isqrt_sse(yDirLen);
+			}
 			return ydir;
 		};
 	
@@ -679,4 +682,3 @@ bool CSphereParticleSpawner::GetMemberInfo(SExpGenSpawnableMemberInfo& memberInf
 {
 	return CSimpleParticleSystem::GetMemberInfo(memberInfo);
 }
->>>>>>> ccf483f088 (rework CSphereParticleSpawner to be cache friendly spawner of CSimpleParticleSystem)
