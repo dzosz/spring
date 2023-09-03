@@ -38,7 +38,6 @@ void AddEffectsQuad(const VA_TYPE_TC& tl, const VA_TYPE_TC& tr, const VA_TYPE_TC
 
 	
 	auto& rb = CProjectile::GetPrimaryRenderBuffer();
-	//auto& rb = bufs[drawOrder];
 
 	const auto uvInfo = float4{ minS, minT, maxS - minS, maxT - minT };
 	const auto animInfo = float3{ animParams.x, animParams.y, animProgress };
@@ -111,8 +110,6 @@ public:
 			
 			// draw
 			
-			//drawRadius = (particleSpeed + particleSpeedSpread) * (particleLife * particleLifeSpread);
-			
 			colorMap.emplace_back(p.colorMap);
 			color.emplace_back();
 			
@@ -130,22 +127,23 @@ public:
 
 	}
 	
-	void update() {
-		check_dead();
-		
-		for (int i =0; i < pos.size(); ++ i) {
+	void update() {		
+		for (int i =0; i < pos.size(); ++i) {
 			pos[i]    += speed[i];
 			speed[i]  += gravity[i];
 			speed[i]  *= airdrag[i];
 		}
-		for (int i =0; i < pos.size(); ++ i) {
+		for (int i =0; i < pos.size(); ++i) {
 			rotVal[i] += rotVel[i];
 			rotVel[i] += rotParams[i];
 		}
-		for (int i =0; i < pos.size(); ++ i) {
+		for (int i =0; i < pos.size(); ++i) {
 			life[i] += decayrate[i];
 		}
-		for (int i =0; i < pos.size(); ++ i) {
+		
+		check_dead();
+		
+		for (int i =0; i < pos.size(); ++i) {
 			size[i] *= sizeMod[i];
 			size[i] += sizeGrowth[i];
 		}		
@@ -451,11 +449,6 @@ void CSimpleParticleSystem::Serialize(creg::ISerializer* s)
 
 void CSimpleParticleSystem::Draw()
 {
-	ZoneScopedN("SPS::Draw");
-	
-	SOA.draw();
-	return;
-	
 	UpdateAnimParams();
 
 	float3 zdir;
@@ -529,12 +522,6 @@ void CSimpleParticleSystem::Draw()
 
 void CSimpleParticleSystem::Update()
 {
-	ZoneScopedN("SPS::Update");
-	
-	SOA.update();
-	deleteMe = false;
-
-	/*
 	deleteMe = true;
 	for (auto& p: particles) {
 		if (p.life < 1.0f) {
@@ -549,34 +536,16 @@ void CSimpleParticleSystem::Update()
 			deleteMe = false;
 		}
 	}
-	*/
 }
 
 void CSimpleParticleSystem::Init(const CUnit* owner, const float3& offset)
 {	
-	static bool initialized = false;
-	if (!initialized) {
-		CProjectile::Init(owner, offset);
-	}
+	CProjectile::Init(owner, offset);
 	
-	if (owner != nullptr) {
-		// must be set before the AddProjectile call
-		ownerID = owner->id;
-		teamID = owner->team;
-		allyteamID =  teamHandler.IsValidTeam(teamID)? teamHandler.AllyTeam(teamID): -1;
-	}
-	
-	initialized = true;
-	createFrame = gs->frameNum;
-	
-	pos = pos + offset;
-	
-	alwaysVisible = true;
-	drawRadius = (particleSpeed + particleSpeedSpread) * (particleLife * particleLifeSpread);
-	
-	SOA.add(*this, offset);
+	const float3 up = emitVector;
+	const float3 right = up.cross(float3(up.y, up.z, -up.x));
+	const float3 forward = up.cross(right);
 
-	/*
 	// FIXME: should catch these earlier and for more projectile-types
 	if (colorMap == nullptr) {
 		colorMap = CColorMap::LoadFromFloatVector(std::vector<float>(8, 1.0f));
@@ -606,9 +575,25 @@ void CSimpleParticleSystem::Init(const CUnit* owner, const float3& offset)
 
 int CSimpleParticleSystem::GetProjectilesCount() const
 {
-	return SOA.pos.size();
+	return numParticles;
 }
 
+void CSphereParticleSpawner::Draw()
+{
+	ZoneScopedN("SPS::Draw");	
+	SOA.draw();
+}
+
+void CSphereParticleSpawner::Update()
+{
+	ZoneScopedN("SPS::Update");	
+	SOA.update();
+}
+
+int CSphereParticleSpawner::GetProjectilesCount() const
+{
+	return SOA.pos.size();
+}
 
 
 bool CSimpleParticleSystem::GetMemberInfo(SExpGenSpawnableMemberInfo& memberInfo)
@@ -642,3 +627,56 @@ bool CSimpleParticleSystem::GetMemberInfo(SExpGenSpawnableMemberInfo& memberInfo
 CR_BIND_DERIVED(CSphereParticleSpawner, CSimpleParticleSystem, )
 
 CR_REG_METADATA(CSphereParticleSpawner, )
+
+void CSphereParticleSpawner::Init(const CUnit* owner, const float3& offset)
+{
+	static bool initialized = false;
+	if (!initialized)
+	{
+		CProjectile::Init(owner, offset);
+	}
+	else 
+	{
+		if (owner != nullptr) {
+			ownerID = owner->id;
+			teamID = owner->team;
+			allyteamID =  teamHandler.IsValidTeam(teamID)? teamHandler.AllyTeam(teamID): -1;
+		}
+		createFrame = gs->frameNum;		
+		drawRadius = (particleSpeed + particleSpeedSpread) * (particleLife * particleLifeSpread);
+		
+		SetPosition(pos + offset);
+		SetVelocityAndSpeed(speed);
+		rotParams *= float3(math::DEG_TO_RAD / GAME_SPEED, math::DEG_TO_RAD / (GAME_SPEED * GAME_SPEED), math::DEG_TO_RAD);
+		UpdateRotation();
+	}
+	
+	// FIXME: should catch these earlier and for more projectile-types
+	if (colorMap == nullptr) {
+		colorMap = CColorMap::LoadFromFloatVector(std::vector<float>(8, 1.0f));
+		LOG_L(L_WARNING, "[CSphereParticleSpawner::%s] no color-map specified", __FUNCTION__);
+	}
+	if (texture == nullptr) {
+		texture = &projectileDrawer->textureAtlas->GetTexture("sphereparticle");
+		LOG_L(L_WARNING, "[CSphereParticleSpawner::%s] no texture specified", __FUNCTION__);
+	}
+	
+	initialized = true;	
+	
+	SOA.add(*this, offset);
+
+	// ensure this object is always visible
+	speed = float4{};
+	SetPosition(camera->GetPos());
+	SetVelocityAndSpeed({});
+	allyteamID = gu->myAllyTeam;
+	
+	drawRadius = 9999999;
+	alwaysVisible = true;
+}
+
+bool CSphereParticleSpawner::GetMemberInfo(SExpGenSpawnableMemberInfo& memberInfo)
+{
+	return CSimpleParticleSystem::GetMemberInfo(memberInfo);
+}
+>>>>>>> ccf483f088 (rework CSphereParticleSpawner to be cache friendly spawner of CSimpleParticleSystem)

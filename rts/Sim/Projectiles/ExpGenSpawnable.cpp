@@ -151,10 +151,10 @@ SpawnableTuple GetSpawnableEntryImpl<CSimpleParticleSystem>()
 
 	return std::make_tuple(
 		std::string{ CSimpleParticleSystem::StaticClass()->name },
-		[](SExpGenSpawnableMemberInfo& memberInfo) { return CSimpleParticleSystem::GetMemberInfo(memberInfo); },
+		[](SExpGenSpawnableMemberInfo& memberInfo) { return CSphereParticleSpawner::GetMemberInfo(memberInfo); },
 		[]() { 
-			// singleton. SPS spawns multiple particles within this instance
-			static CSimpleParticleSystem* p = projMemPool.alloc<CSimpleParticleSystem>();
+			// singleton SPS spawns multiple particles within this instance
+			static CSphereParticleSpawner* p = projMemPool.alloc<CSphereParticleSpawner>();
 			return static_cast<CExpGenSpawnable*>(p);
 		}
 	);

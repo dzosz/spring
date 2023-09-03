@@ -885,7 +885,7 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 		extern std::vector<std::pair<int, float>> projOrders;
 		if (!drawSorted)
 		{
-			ZoneScopedN("ProjectileDrawer::NewSort");	
+			ZoneScopedN("ProjectileDrawer::SortQuads");	
 			
 			static std::vector<uint32_t> new_indices;
 			new_indices.resize(rb_indices.size()/6); // each quad is 6 indices
@@ -893,7 +893,7 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 			
 			std::iota(new_indices.begin(), new_indices.end(), 0); 
 			std::sort(new_indices.begin(), new_indices.end(), [&](const auto& l, const auto& r) {
-				return projOrders[l] < projOrders[r];
+				return projOrders[l] < projOrders[r]; // sort indices using {drawOrd, camDistance};
 			});
 			uint32_t baseIndex = 0;
 			for (auto& i : new_indices) {
