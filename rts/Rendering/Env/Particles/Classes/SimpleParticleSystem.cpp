@@ -22,7 +22,7 @@
 
 extern bool DRAW_REFLECTION;
 extern bool DRAW_REFRACTION;
-extern std::vector<std::pair<int, float>> projOrders;
+extern std::vector<std::pair<int, float>> enqueuedProjectilesDrawOrderData;
 
 void AddEffectsQuad(const VA_TYPE_TC& tl, const VA_TYPE_TC& tr, const VA_TYPE_TC& br, const VA_TYPE_TC& bl,
 					const float3& animParams, const float& animProgress)
@@ -334,7 +334,7 @@ public:
 				{ interPos[i] + bounds[i][3], texture[i]->xstart, texture[i]->yend,   color[i].data() },
 				anims[i], aprogress[i]
 			);
-			projOrders.push_back(std::pair{drawOrder[i], -cam->ProjectedDistance(pos[i])});
+			enqueuedProjectilesDrawOrderData.push_back(std::pair{drawOrder[i], -cam->ProjectedDistance(pos[i])});
 		}	
 	}
 	

@@ -82,7 +82,7 @@ static void AddEffectsQuad(int drawOrder, float sortDist, const VA_TYPE_TC& tl, 
 		{ bl.pos, float3{ bl.s, bl.t, layer }, uvInfo, animInfo, bl.c }
 	);
 	
-	projOrders.push_back(std::pair{drawOrder, -sortDist});
+	enqueuedProjectilesDrawOrderData.push_back(std::pair{drawOrder, -sortDist});
 }
 
 

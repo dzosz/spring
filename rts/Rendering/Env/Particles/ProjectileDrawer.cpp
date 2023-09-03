@@ -881,31 +881,32 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 			fxShaders[needSoften]->SetUniform("softenThreshold", CProjectileDrawer::softenThreshold[0]);
 		}
 
-		auto& rb_indices = rb.GetIndcs();
-		extern std::vector<std::pair<int, float>> projOrders;
+		auto& arrayBufferIndices = rb.GetIndcs();
+		extern std::vector<std::pair<int, float>> enqueuedProjectilesDrawOrderData;
 		if (!drawSorted)
 		{
 			ZoneScopedN("ProjectileDrawer::SortQuads");	
 			
-			static std::vector<uint32_t> new_indices;
-			new_indices.resize(rb_indices.size()/6); // each quad is 6 indices
-			assert(new_indices.size() == projOrders.size());
+			static std::vector<uint32_t> newDrawOrderIndices;
+			newDrawOrderIndices.resize(arrayBufferIndices.size()/6); // each quad is 6 indices
+			assert(newDrawOrderIndices.size() == enqueuedProjectilesDrawOrderData.size());
 			
-			std::iota(new_indices.begin(), new_indices.end(), 0); 
-			std::sort(new_indices.begin(), new_indices.end(), [&](const auto& l, const auto& r) {
-				return projOrders[l] < projOrders[r]; // sort indices using {drawOrd, camDistance};
+			std::iota(newDrawOrderIndices.begin(), newDrawOrderIndices.end(), 0); 
+			std::sort(newDrawOrderIndices.begin(), newDrawOrderIndices.end(), [&](const auto& l, const auto& r) {
+				return enqueuedProjectilesDrawOrderData[l] < enqueuedProjectilesDrawOrderData[r]; // sort indices using {drawOrd, camDistance};
 			});
+			
 			uint32_t baseIndex = 0;
-			for (auto& i : new_indices) {
-				// new_indices is now sorted
-				// apply change to array buffer
+			for (auto& i : newDrawOrderIndices) {
+				// newDrawOrderIndices is now sorted by {drawOrder, -cameraDistance}
+				// apply new order to array buffer
 				for (int j =0; j < 6 ; ++ j) {
-					rb_indices[baseIndex*6+j] += (i*4) - (baseIndex*4);
+					arrayBufferIndices[baseIndex*6+j] += (i*4) - (baseIndex*4);
 				}
 				++baseIndex;
 			}			
 		}
-		projOrders.clear();	
+		enqueuedProjectilesDrawOrderData.clear();	
 		
 		rb.DrawElements(GL_TRIANGLES);
 

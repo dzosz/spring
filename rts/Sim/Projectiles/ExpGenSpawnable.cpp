@@ -41,7 +41,7 @@ using GetMemberInfoFunc = bool(*)(SExpGenSpawnableMemberInfo&);
 using SpawnableTuple = std::tuple<std::string, GetMemberInfoFunc, AllocFunc>;
 
 static std::array<SpawnableTuple, 14> spawnables = {};
-std::vector<std::pair<int, float>> projOrders;
+std::vector<std::pair<int, float>> enqueuedProjectilesDrawOrderData;
 
 
 CExpGenSpawnable::CExpGenSpawnable(const float3& pos, const float3& spd)
@@ -250,5 +250,5 @@ void CExpGenSpawnable::AddEffectsQuad(const VA_TYPE_TC& tl, const VA_TYPE_TC& tr
 		{ bl.pos, float3{ bl.s, bl.t, layer }, uvInfo, animInfo, bl.c }
 	);
 
-	projOrders.push_back(std::pair{drawOrder, -sortDist});
+	enqueuedProjectilesDrawOrderData.push_back(std::pair{drawOrder, -sortDist});
 }
