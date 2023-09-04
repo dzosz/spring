@@ -84,7 +84,8 @@ protected:
 class CSphereParticleSpawner : public CSimpleParticleSystem {
 	CR_DECLARE_DERIVED(CSphereParticleSpawner)
 public:
-	CSphereParticleSpawner() {}
+	CSphereParticleSpawner();
+	virtual ~CSphereParticleSpawner();
 
 	void Draw() override;
 	void Update() override;

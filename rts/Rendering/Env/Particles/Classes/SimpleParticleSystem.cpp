@@ -79,9 +79,11 @@ public:
 	
 	std::vector<float> drawRadius;
 	std::vector<int> drawOrder;
+	
+	std::vector<bool> directional;
 		
 	void add(CSimpleParticleSystem& p, float3 offset) {
-		// LOG("xyz add %i", pos.size());
+		// LOG("xyz add %i %i %f %f", pos.size(), p.numParticles, p.particleLife, p.sizeGrowth);
 		const float3 up = p.emitVector;
 		const float3 right = up.cross(float3(up.y, up.z, -up.x));
 		const float3 forward = up.cross(right);
@@ -109,6 +111,8 @@ public:
 			
 			visible.push_back(true);
 			allyTeam.push_back(p.allyteamID);
+			
+			directional.push_back(p.directional);
 			
 			// draw
 			
@@ -146,8 +150,7 @@ public:
 		check_dead();
 		
 		for (int i =0; i < pos.size(); ++i) {
-			size[i] *= sizeMod[i];
-			size[i] += sizeGrowth[i];
+			size[i] = size[i] * sizeMod[i] + sizeGrowth[i];
 		}		
 	}
 	
@@ -182,6 +185,8 @@ public:
 		
 		remove_from_container(idx, visible);
 		remove_from_container(idx, allyTeam);
+		
+		remove_from_container(idx, directional);
 		
 		// draw
 		remove_from_container(idx, colorMap);
@@ -219,8 +224,6 @@ public:
 	std::vector<int> createFrame;
 	
 	void draw() {
-		bool drawReflection = DRAW_REFLECTION;
-		bool drawRefraction = DRAW_REFRACTION;
 		updateAnimParams();
 		
 		for (int i =0; i < pos.size(); ++i) {
@@ -271,26 +274,30 @@ public:
 		}*/
 		
 		// streflop alternative
-		const static auto safeANormalize = [&](const auto& ydir, const auto& yDirLen) {	
-			if likely(yDirLen > float3::nrm_eps()) {
-				return ydir * fastmath::isqrt_sse(yDirLen);
+		const static auto safeANormalize = [&](const auto& ydir) {	
+			const float sql = ydir.SqLength();
+			if likely(sql > float3::nrm_eps()) {
+				return ydir * fastmath::isqrt_nosse(sql);
 			}
 			return ydir;
 		};
 	
 		auto cpos = cam->GetPos();
+		auto fwd = camera->GetForward();
+		
+		const bool shadowPass = (camera->GetCamType() == CCamera::CAMTYPE_SHADOW);
+		
 		for (int i =0; i < pos.size(); ++i) {
 			if (!visible[i]) {
 				continue;
 			}
-			const float3 zdir = safeANormalize(pos[i] - cpos, (pos[i] - cpos).SqLength());
+			const float3 zdir = safeANormalize(pos[i] - cpos);
 			float3 ydir = zdir.cross(speed[i]);
 			float yDirLen2 = ydir.SqLength();
-			ydir = safeANormalize(ydir, yDirLen2);
-			// ydir.SafeANormalize();
+			ydir = safeANormalize(ydir);
 			const float3 xdir = ydir.cross(zdir);
 
-			if (yDirLen2 > 0.001f)
+			if (!shadowPass && directional[i] && yDirLen2 > 0.001f)
 			{
 				bounds[i] = {
 					-ydir * size[i] - xdir * size[i],
@@ -298,7 +305,12 @@ public:
 					 ydir * size[i] + xdir * size[i],
 					 ydir * size[i] - xdir * size[i]
 				};
-			} else {
+				if (std::fabs(rotVal[i]) > 0.01f) {
+					float3::rotate<false>(rotVal[i], zdir, bounds[i]);
+				}
+			}
+			else
+			{
 				const float3 cameraRight = camera->GetRight() * size[i];
 				const float3 cameraUp    = camera->GetUp()    * size[i];				
 				bounds[i] = {
@@ -307,24 +319,24 @@ public:
 					 cameraRight + cameraUp,
 					-cameraRight + cameraUp
 				};
+				if (std::fabs(rotVal[i]) > 0.01f) {
+					float3::rotate<false>(rotVal[i], fwd, bounds[i]);
+				}
 			}
 		}		
 
+		/*
 		// TODO branchless?
-		auto fwd = camera->GetForward();
+		
 		for (int i =0; i < pos.size(); ++i) {
 			if (!visible[i]) {
 				continue;
 			}
-			if (math::fabs(rotVal[i]) > 0.01f) {
-				for (auto& b : bounds[i]) {
-					// faster fastmath than float3.rotate which uses strlflop
-					const float ca = fastmath::cos(rotVal[i]);
-					const float sa = fastmath::sin(rotVal[i]);				
-					b = b * ca + fwd.cross(b) * sa + fwd * fwd.dot(b) * (1.0f - ca);
-				}
+			if (std::fabs(rotVal[i]) > 0.01f) {
+				float3::rotate<false>(rotVal[i], fwd, bounds[i]);
 			}
 		}
+		*/
 		
 		for (int i =0; i < pos.size(); ++i) {
 			if (!visible[i]) {
@@ -472,7 +484,7 @@ void CSimpleParticleSystem::Draw()
 			 ydir * size - xdir * size
 		};
 
-		if (math::fabs(p->rotVal) > 0.01f) {
+		if (std::fabs(p->rotVal) > 0.01f) {
 			float3::rotate<false>(p->rotVal, zdir, bounds);
 		}
 		AddEffectsQuad(
@@ -634,6 +646,7 @@ CR_REG_METADATA(CSphereParticleSpawner, )
 void CSphereParticleSpawner::Init(const CUnit* owner, const float3& offset)
 {
 	static bool initialized = false;
+	// LOG("xyz CSphereParticleSpawner::Init %i %p", initialized, this);
 	if (!initialized)
 	{
 		CProjectile::Init(owner, offset);
@@ -667,6 +680,8 @@ void CSphereParticleSpawner::Init(const CUnit* owner, const float3& offset)
 	initialized = true;	
 	
 	SOA.add(*this, offset);
+	
+	//*this = CSphereParticleSpawner();
 
 	// ensure this object is always visible
 	speed = float4{};
@@ -676,9 +691,46 @@ void CSphereParticleSpawner::Init(const CUnit* owner, const float3& offset)
 	
 	drawRadius = 9999999;
 	alwaysVisible = true;
+
+	rotParams = float3{ 0.0f, 0.0f, 0.0f };
+	rotVal = {};
+	rotVel = {};
+
+	
+	// reset
+	emitVector = ZeroVector;
+	emitMul = {1.0f, 1.0f, 1.0};
+	gravity = ZeroVector;
+	particleSpeed=(0.0f);
+	particleSpeedSpread=(0.0f);
+	emitRot=(0.0f);
+	emitRotSpread=(0.0f);
+	texture=(nullptr);
+	colorMap=(nullptr);
+	directional=(false);
+	particleLife=(0.0f);
+	particleLifeSpread=(0.0f);
+	particleSize=(0.0f);
+	particleSizeSpread=(0.0f);
+	airdrag=(0.0f);
+	sizeGrowth=(0.0f);
+	sizeMod=(0.0f);
+	numParticles=(0);
+	animParams = { 1.0f, 1.0f, 30.0f };
+	animProgress = 0.0f;
 }
 
 bool CSphereParticleSpawner::GetMemberInfo(SExpGenSpawnableMemberInfo& memberInfo)
 {
 	return CSimpleParticleSystem::GetMemberInfo(memberInfo);
+}
+
+CSphereParticleSpawner::~CSphereParticleSpawner()
+{
+}
+
+CSphereParticleSpawner::CSphereParticleSpawner()
+{
+	checkCol = false;
+	useAirLos = true;
 }

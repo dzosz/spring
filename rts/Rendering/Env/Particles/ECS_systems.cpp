@@ -117,105 +117,9 @@ static bool IsValidTexture(const AtlasedTexture* tex)
 	return tex && tex != &CTextureAtlas::dummy;
 }
 
-/*
 template <typename ViewT>
 static void DrawSimpleParticleSystem(entt::entity ent, ViewT&& view)
 {
-	const auto& drawPos = view.template get<const DrawPosition>(ent).value;
-	const auto& speed = view.template get<const Speed>(ent).value;
-	const auto& size = view.template get<const Sized>(ent).value;
-	const auto& lifetime = view.template get<const Lifetime>(ent).value;
-	const auto& data = view.template get<const RenderData>(ent);
-	const auto& rot = view.template get<const Rotation>(ent);
-	
-	const auto& animParams = view.template get<const AnimParams>(ent);
-	const auto& animProgress = view.template get<const AnimProgress>(ent);
-	
-	unsigned char color[4];
-	data.colorMap->GetColor(color, lifetime);
-	
-	const float3 interPos = drawPos;
-	std::array<float3, 4> bounds;
-	
-	const bool shadowPass = (camera->GetCamType() == CCamera::CAMTYPE_SHADOW);
-	
-	if (data.directional && !shadowPass) {
-		const float3 zdir = (drawPos - camera->GetPos()).SafeANormalize();
-		float3 ydir = zdir.cross(speed);
-		const float yDirLen2 = ydir.SqLength();
-		ydir.SafeANormalize();
-		const float3 xdir = ydir.cross(zdir);
-		const float3* fwdDir = &zdir;
-
-		if (yDirLen2 > 0.001f) {
-			bounds = {
-				-ydir * size - xdir * size,
-				-ydir * size + xdir * size,
-				 ydir * size + xdir * size,
-				 ydir * size - xdir * size
-			};
-		} else {
-			// in this case the particle's coor-system is degenerate
-			const float3 cameraRight = camera->GetRight() * size;
-			const float3 cameraUp    = camera->GetUp()    * size;
-			fwdDir = &camera->GetForward();
-
-			bounds = {
-				-cameraRight - cameraUp,
-				 cameraRight - cameraUp,
-				 cameraRight + cameraUp,
-				-cameraRight + cameraUp
-			};
-		}
-
-		if (math::fabs(rot.rotVal) > 0.01f) {
-			for (auto& b : bounds)
-				b = b.rotate(rot.rotVal, *fwdDir);
-		}
-		float3 animInfo = { animParams.value.x, animParams.value.y, animProgress.value };
-		AddEffectsQuad(
-			{ interPos + bounds[0], data.texture->xstart, data.texture->ystart, color },
-			{ interPos + bounds[1], data.texture->xend,   data.texture->ystart, color },
-			{ interPos + bounds[2], data.texture->xend,   data.texture->yend,   color },
-			{ interPos + bounds[3], data.texture->xstart, data.texture->yend,   color },
-			animInfo
-		);
-		return;
-	}
-
-
-	const float3 cameraRight = camera->GetRight() * size;
-	const float3 cameraUp    = camera->GetUp()    * size;
-
-	bounds = {
-		-cameraRight - cameraUp,
-		 cameraRight - cameraUp,
-		 cameraRight + cameraUp,
-		-cameraRight + cameraUp
-	};
-
-	if (math::fabs(rot.rotVal) > 0.01f) {
-		for (auto& b : bounds)
-			b = b.rotate(rot.rotVal, camera->GetForward());
-	}
-	float3 animInfo = { animParams.value.x, animParams.value.y, animProgress.value };
-	AddEffectsQuad(
-		{ interPos + bounds[0], data.texture->xstart, data.texture->ystart, color },
-		{ interPos + bounds[1], data.texture->xend,   data.texture->ystart, color },
-		{ interPos + bounds[2], data.texture->xend,   data.texture->yend,   color },
-		{ interPos + bounds[3], data.texture->xstart, data.texture->yend,   color },
-		animInfo
-				
-	);
-}
-*/
-
-template <typename ViewT>
-static void DrawSimpleParticleSystem(ViewT&& view)
-{
-	ZoneScopedN("XYZ::DrawSimpleParticleSystem");
-	view.each([&](auto ent, auto...) {
-		
 	const auto& data = view.template get<const RenderData>(ent);	
 	const auto& drad = view.template get<const DrawRadius>(ent).value;
 	const auto& drawOrder = view.template get<const DrawOrder>(ent).drawOrder;
@@ -281,17 +185,22 @@ static void DrawSimpleParticleSystem(ViewT&& view)
 		{ interPos + bounds[2], data.texture->xend,   data.texture->yend,   color },
 		{ interPos + bounds[3], data.texture->xstart, data.texture->yend,   color },
 		animInfo
-				
 	);
+}
+
+template <typename ViewT>
+static void DrawSimpleParticleSystem(ViewT&& view)
+{
+	ZoneScopedN("ECS::DrawSimpleParticleSystem");
+	view.each([&](auto ent, auto...) {
+		DrawSimpleParticleSystem(ent, view);
 	});
 }
 
 template <typename ViewT>
-static void DrawCBitmapMuzzleFlame(ViewT&& view)
+static void DrawCBitmapMuzzleFlame(entt::entity ent, ViewT&& view)
 {
-	ZoneScopedN("XYZ::DrawCBitmapMuzzleFlame");
-	view.each([&](auto ent, auto...) {
-		
+	
 	const auto& data = view.template get<const RenderData>(ent);	
 	const auto& drad = view.template get<const DrawRadius>(ent).value;
 	const auto& drawOrder = view.template get<const DrawOrder>(ent).drawOrder;
@@ -381,8 +290,14 @@ static void DrawCBitmapMuzzleFlame(ViewT&& view)
 					animInfo
 		);
 	}
-	
-	
+}
+
+template <typename ViewT>
+static void DrawCBitmapMuzzleFlame(ViewT&& view)
+{
+	ZoneScopedN("ECS::DrawCBitmapMuzzleFlame");
+	view.each([&](auto ent, auto...) {
+		DrawCBitmapMuzzleFlame(ent, view);
 	});
 }
 
@@ -525,100 +440,6 @@ static void UpdateVisibilitySystem(entt::registry& reg)
 	});
 }
 
-/*
-template <typename ViewT>
-static void DrawCBitmapMuzzleFlame(entt::entity ent, ViewT&& view)
-{
-	
-	//float life = view.template get<const Lifetime>(ent).value;
-	//life += view.template get<const Decayrate>(ent).value * globalRendering->timeOffset;
-	const float t = (projectileRegistry.ctx().get<PhysDelta>().frameNum - view.template get<const CreateFrame>(ent).v +
-					 projectileRegistry.ctx().get<PhysDelta>().timeOffset);
-	
-	float life = t * view.template get<const Decayrate>(ent).value;
-	
-	const auto& sizeGrowth = view.template get<const LifetimeSizeChange>(ent).sizeGrowth;
-	const auto& size = view.template get<const Sized>(ent).value;
-	const auto& length = view.template get<const Length>(ent).value;
-	const float igrowth = sizeGrowth * (1.0f - Square(1.0f - life));
-	
-	const float isize = size * (igrowth + 1.0f);
-	const float ilength = length * (igrowth + 1.0f);
-	
-	auto& radius = view.template get<DrawRadius>(ent).value;
-	radius = std::max(isize, ilength);
-	
-	auto& colorMap = view.template get<const RenderData>(ent).colorMap;
-	
-	unsigned char col[4];
-	colorMap->GetColor(col, life);
-	
-	auto& pos = view.template get<const Position>(ent).value;
-	auto& frontOffset = projectileRegistry.get<const FrontOffset>(ent).value;	
-	auto dir = view.template get<const Direction>(ent).value;
-	float3 fpos = pos + dir * frontOffset * ilength;
-	
-	const float3 zdir = (std::fabs(dir.dot(UpVector)) >= 0.99f)? FwdVector: UpVector;
-	const float3 xdir = (dir.cross(zdir)).SafeANormalize();
-	const float3 ydir = (dir.cross(xdir)).SafeANormalize();
-	
-	std::array<float3, 12> bounds = {
-		  ydir * isize                ,
-		  ydir * isize + dir * ilength,
-		 -ydir * isize + dir * ilength,
-		 -ydir * isize                ,
-	
-		  xdir * isize                ,
-		  xdir * isize + dir * ilength,
-		 -xdir * isize + dir * ilength,
-		 -xdir * isize                ,
-	
-		 -xdir * isize + ydir * isize,
-		  xdir * isize + ydir * isize,
-		  xdir * isize - ydir * isize,
-		 -xdir * isize - ydir * isize
-	};
-	
-	auto& rotVal = view.template get<const Rotation>(ent).rotVal;
-	if (math::fabs(rotVal) > 0.01f) {
-		for (auto& b : bounds)
-			b = b.rotate(rotVal, dir);
-	}
-	
-	auto& animParams = view.template get<const AnimParams>(ent).value;
-	auto& animProgress = view.template get<const AnimProgress>(ent).value;
-	float3 animInfo = { animParams.x, animParams.y, animProgress };
-	
-	auto& sideTexture = view.template get<const RenderData>(ent).extraTexture;
-	if (IsValidTexture(sideTexture)) {
-		AddEffectsQuad(
-			{ pos + bounds[0], sideTexture->xstart, sideTexture->ystart, col },
-			{ pos + bounds[1], sideTexture->xend  , sideTexture->ystart, col },
-			{ pos + bounds[2], sideTexture->xend  , sideTexture->yend  , col },
-			{ pos + bounds[3], sideTexture->xstart, sideTexture->yend  , col },
-			animInfo
-		);
-		AddEffectsQuad(
-			{ pos + bounds[4], sideTexture->xstart, sideTexture->ystart, col },
-			{ pos + bounds[5], sideTexture->xend  , sideTexture->ystart, col },
-			{ pos + bounds[6], sideTexture->xend  , sideTexture->yend  , col },
-			{ pos + bounds[7], sideTexture->xstart, sideTexture->yend  , col },
-			animInfo
-		);
-	}
-
-	auto& frontTexture = view.template get<const RenderData>(ent).texture;
-	if (IsValidTexture(frontTexture)) {
-		AddEffectsQuad(
-			{ fpos + bounds[8 ], frontTexture->xstart, frontTexture->ystart, col },
-			{ fpos + bounds[9 ], frontTexture->xend  , frontTexture->ystart, col },
-			{ fpos + bounds[10], frontTexture->xend  , frontTexture->yend , col },
-			{ fpos + bounds[11], frontTexture->xstart, frontTexture->yend , col },
-			animInfo
-		);
-	}
-}
-*/
 template <typename ViewT>
 static void DrawCDirtProjectile(entt::entity ent, ViewT&& view) 
 {
@@ -924,11 +745,11 @@ static void DrawCSmokeTrailProjectile(entt::entity ent, ViewT&& view)
 
 
 void PreDrawSystem() {
-	ZoneScopedN("XYZ::PreDrawSystem");
+	ZoneScopedN("ECS::PreDrawSystem");
 	UpdateAnimProgressSystem(projectileRegistry.view<AnimParams2>()); 
-	//UpdateDrawPosSystem(projectileRegistry.view<const Position, DrawPosition>(entt::exclude<Speed>));
-	//UpdateDrawPosSpeedSystem(projectileRegistry.view<const Position, const Speed, DrawPosition>());
-	//UpdateDrawOrder(projectileRegistry.view<const DrawPosition, DrawOrder>());
+	UpdateDrawPosSystem(projectileRegistry.view<const Position, DrawPosition>(entt::exclude<Speed>));
+	UpdateDrawPosSpeedSystem(projectileRegistry.view<const Position, const Speed, DrawPosition>());
+	UpdateDrawOrder(projectileRegistry.view<const DrawPosition, DrawOrder>());
 	RotationSystem(projectileRegistry.group<Rotation, const RotParams>(entt::get<const CreateFrame>));
 	//UpdateVisibilitySystem(projectileRegistry);
 	// TODO add update DrawRadius
@@ -936,11 +757,11 @@ void PreDrawSystem() {
 
 template <typename ViewT>
 static void DispatchDrawingECS(entt::entity ent, ViewT&& view) {
-	/*if (projectileRegistry.all_of<SimpleParticleSystemTag>(ent)) {
+	if (projectileRegistry.all_of<SimpleParticleSystemTag>(ent)) {
 		DrawSimpleParticleSystem(ent, projectileRegistry);
 	} else if (projectileRegistry.all_of<CBitmapMuzzleFlameTag>(ent)) {
 		DrawCBitmapMuzzleFlame(ent, projectileRegistry);
-	} else */ if (projectileRegistry.all_of<CDirtProjectileTag>(ent)) {
+	} else if (projectileRegistry.all_of<CDirtProjectileTag>(ent)) {
 		DrawCDirtProjectile(ent, projectileRegistry);
 	} else if (projectileRegistry.all_of<CExploSpikeProjectileTag>(ent)) {
 		DrawCExploSpikeProjectile(ent, projectileRegistry);
@@ -961,14 +782,13 @@ static void DispatchDrawingECS(entt::entity ent, ViewT&& view) {
 // this approach uses runtime look up of the components type
 void DrawSystem(const std::vector<std::pair<std::pair<int, float>, CProjectile*>>& sortedProj)
 {
-	/*
+
 	projectileRegistry.sort<DrawOrder>([](const auto &lhs, const auto &rhs) {
 		return std::pair(lhs.drawOrder, lhs.distanceFromCamera) < std::pair(rhs.drawOrder, rhs.distanceFromCamera);
 	});
-	*/
 
 	auto projIt = sortedProj.begin();
-	projectileRegistry.view<const DrawOrder, const VisibleTag>().each([&](auto ent, const auto& drawOrder) {
+	projectileRegistry.view<const DrawOrder/*, const VisibleTag*/>().each([&](auto ent, const auto& drawOrder) {
 		const auto dist = std::pair{drawOrder.drawOrder, drawOrder.distanceFromCamera};
 		while (projIt != sortedProj.end() && projIt->first < dist) {
 			projIt->second->Draw();
@@ -982,12 +802,6 @@ void DrawSystem(const std::vector<std::pair<std::pair<int, float>, CProjectile*>
 		projIt->second->Draw();
 		++projIt;
 	}
-	
-	DrawSimpleParticleSystem(projectileRegistry.view<const SimpleParticle, const DrawRadius, const RenderData, const AnimParams2, const DrawOrder>());
-	//DrawSimpleParticleSystem(projectileRegistry.group<const SimpleParticle>(entt::get_t<const DrawRadius, const RenderData, const AnimParams, const AnimProgress>()));
-	
-	DrawCBitmapMuzzleFlame(projectileRegistry.view<const BitmapMuzzleFlame, const DrawRadius, const RenderData, const AnimParams2, const DrawOrder>());
-	//DrawCBitmapMuzzleFlame(projectileRegistry.view<const BitmapMuzzleFlame>(entt::get_t<const DrawRadius, const RenderData, const AnimParams, const AnimProgress, const CreateFrame>()));
 
 }
 

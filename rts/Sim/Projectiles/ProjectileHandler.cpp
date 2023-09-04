@@ -84,6 +84,9 @@ static std::vector<CProjectile*> queuedProjectiles;
 static std::unordered_map<std::type_index, std::function<void(CProjectile*)>> ecsSpawner;
 
 bool isEcsProj(const CProjectile* pro) {
+	//if (!dynamic_cast<const CSimpleParticleSystem*>(pro)) {
+	//	return true;
+	//}
 	if (!ECS_MODE)
 		return false;
 	auto type_idx = std::type_index(typeid(*pro));
@@ -169,37 +172,9 @@ static void updateECSParticles() {
 }
 
 } // unnamed namespace
-/*
+
 void CProjectileHandler::AddECSProjectile(CSimpleParticleSystem* proj) {
-	for (int i=0; i< proj->GetProjectilesCount(); ++i)
-	{
-		auto& particles = proj->particles;
-		auto ent = projectileRegistry.create();
-	 	projectileRegistry.emplace<SimpleParticleSystemTag>(ent);
-		
-	 	projectileRegistry.emplace<DrawRadius>(ent, proj->drawRadius);
-	 	projectileRegistry.emplace<DrawPosition>(ent, proj->drawPos);
-	 	projectileRegistry.emplace<DrawOrder>(ent, proj->drawOrder, 0.0f);
-	 	projectileRegistry.emplace<AlliedTeam>(ent, proj->allyteamID); // TODO maybe ignore this component if team is not set?
-	 	projectileRegistry.emplace<Position>(ent, particles[i].pos);
-	 	projectileRegistry.emplace<Speed>(ent, particles[i].speed);
-	 	projectileRegistry.emplace<Rotation>(ent, particles[i].rotVal, particles[i].rotVel);
-	 	projectileRegistry.emplace<RotParams>(ent, proj->rotParams);
-	 	projectileRegistry.emplace<Lifetime>(ent, particles[i].life);
-	 	projectileRegistry.emplace<Decayrate>(ent, particles[i].decayrate);
-	 	projectileRegistry.emplace<Sized>(ent, particles[i].size);
-	 	projectileRegistry.emplace<SizeChange>(ent, proj->sizeMod, proj->sizeGrowth);
-	 	projectileRegistry.emplace<AnimProgress>(ent, proj->animProgress);
-	 	projectileRegistry.emplace<AnimParams>(ent, proj->animParams);
-	 	projectileRegistry.emplace<CreateFrame>(ent, proj->createFrame);
-	 	projectileRegistry.emplace<ParticlePhys>(ent, proj->gravity, proj->airdrag);
-	 	projectileRegistry.emplace<RenderData>(ent, proj->texture, nullptr, proj->colorMap, proj->directional);
-	}
-}
-*/
-void CProjectileHandler::AddECSProjectile(CSimpleParticleSystem* proj) {
-	TracyPlot("drawOrdSPS", (float)proj->drawOrder);
-	
+	//TracyPlot("drawOrdSPS", (float)proj->drawOrder);
 	for (int i=0; i< proj->GetProjectilesCount(); ++i)
 	{
 		auto& particles = proj->particles;
@@ -207,7 +182,7 @@ void CProjectileHandler::AddECSProjectile(CSimpleParticleSystem* proj) {
 		projectileRegistry.emplace<SimpleParticleSystemTag>(ent);
 		auto& p = proj->particles[i];
 		projectileRegistry.emplace<SimpleParticle>(ent,
-			p.pos,p.speed,proj->gravity, proj->airdrag,
+			p.pos, p.speed,proj->gravity, proj->airdrag,
 			p.rotVal, p.rotVel, proj->rotParams,
 			p.life, p.decayrate, p.size,
 			proj->sizeGrowth, proj->sizeMod, proj->allyteamID
@@ -224,36 +199,7 @@ void CProjectileHandler::AddECSProjectile(CSimpleParticleSystem* proj) {
 	}
 }
 
-/*
-void CProjectileHandler::AddECSProjectile(CBitmapMuzzleFlame* proj) {
-	auto ent = projectileRegistry.create();
- 	projectileRegistry.emplace<CBitmapMuzzleFlameTag>(ent);
- 	projectileRegistry.emplace<AirLosTag>(ent);
-	
- 	projectileRegistry.emplace<FrontOffset>(ent, proj->frontOffset); // BitmapMuzzleFlameSpecific
- 	projectileRegistry.emplace<DrawRadius>(ent, proj->drawRadius);
- 	projectileRegistry.emplace<DrawPosition>(ent, proj->drawPos);
- 	projectileRegistry.emplace<DrawOrder>(ent, proj->drawOrder, 0.0f);
- 	projectileRegistry.emplace<AlliedTeam>(ent, proj->allyteamID); // TODO maybe ignore this check if team is not set?
- 	projectileRegistry.emplace<Position>(ent, proj->pos);
- 	projectileRegistry.emplace<Direction>(ent, proj->dir);
-	//registry.emplace<Speed>(ent, proj->speed);
- 	projectileRegistry.emplace<Rotation>(ent, proj->rotVal, proj->rotVel);
- 	projectileRegistry.emplace<RotParams>(ent, proj->rotParams);
- 	projectileRegistry.emplace<Lifetime>(ent, 0.0f);
- 	projectileRegistry.emplace<Decayrate>(ent, 1.0/proj->ttl);
- 	projectileRegistry.emplace<Sized>(ent, proj->size);
- 	projectileRegistry.emplace<LifetimeSizeChange>(ent, proj->sizeGrowth); // growth done in Draw()
- 	projectileRegistry.emplace<Length>(ent, proj->length);
- 	projectileRegistry.emplace<AnimProgress>(ent, 0.0f);	
- 	projectileRegistry.emplace<AnimParams>(ent, proj->animParams);
- 	projectileRegistry.emplace<CreateFrame>(ent, proj->createFrame);
-
- 	projectileRegistry.emplace<RenderData>(ent, proj->frontTexture, proj->sideTexture, proj->colorMap, false);
-}*/
-
 void CProjectileHandler::AddECSProjectile(CBitmapMuzzleFlame* p) {
-	TracyPlot("drawOrdBitmap", (float)p->drawOrder);
 	auto ent = projectileRegistry.create();
 	projectileRegistry.emplace<CBitmapMuzzleFlameTag>(ent);
 	projectileRegistry.emplace<AirLosTag>(ent);
@@ -509,11 +455,11 @@ void CProjectileHandler::Init()
 	ecsSpawner[std::type_index(typeid(CSimpleParticleSystem))] = [&](CProjectile* p) {
 		AddECSProjectile(static_cast<CSimpleParticleSystem*>(p));
 	};
-
+/*
 	ecsSpawner[std::type_index(typeid(CBitmapMuzzleFlame))] = [&](CProjectile* p) {
 		AddECSProjectile(static_cast<CBitmapMuzzleFlame*>(p));
 	};
-/*
+
 	ecsSpawner[std::type_index(typeid(CDirtProjectile))] = [&](CProjectile* p) {
 		AddECSProjectile(static_cast<CDirtProjectile*>(p));
 	};
@@ -542,11 +488,7 @@ void CProjectileHandler::Init()
 	createECSGroups();
 	createECSTaskGraph();
 	
-	TracyPlotConfig("drawOrdSPS", tracy::PlotFormatType::Number, true, false, tracy::Color::Aqua);
-	TracyPlotConfig("drawOrdBitmap", tracy::PlotFormatType::Number, true, false, tracy::Color::Aqua);
-	TracyPlotConfig("SPSType", tracy::PlotFormatType::Number, true, false, tracy::Color::Aqua);
-
-	
+	TracyPlotConfig("drawOrdSPS", tracy::PlotFormatType::Number, true, false, tracy::Color::Aqua);	
 }
 
 void CProjectileHandler::Kill()
