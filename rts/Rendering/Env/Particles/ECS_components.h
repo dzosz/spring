@@ -206,6 +206,10 @@ struct SimpleParticle {
 	float sizeGrowth;
 	float sizeMod;
 	int allyteam;
+	
+	float drawRadius;
+	DrawOrder drawo;
+	RenderData r;
 };
 
 struct BitmapMuzzleFlame {

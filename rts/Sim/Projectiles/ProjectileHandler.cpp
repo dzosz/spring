@@ -147,14 +147,14 @@ static void createECSGroups() { // for better iteration performance
 	*/
 	/*
  	projectileRegistry.group<Position, const Speed, DrawPosition>();
-	//registry.group<const Position, DrawPosition>();
+	//projectileRegistry.group<const Position, DrawPosition>();
 	*/
 	
-	//registry.group<AnimProgress, const AnimParams, const CreateFrame>();	
-	//registry.group<const SimpleParticle>(entt::get<const DrawRadius, const RenderData, const AnimParams, const AnimProgress>);
-	//registry.group<const BitmapMuzzleFlame>(entt::get<const DrawRadius, const RenderData, const AnimParams, const AnimProgress, const CreateFrame>);
+	//projectileRegistry.group<AnimProgress, const AnimParams, const CreateFrame>();	
+	//projectileRegistry.group<const SimpleParticle>(entt::get<const DrawRadius, const RenderData, const AnimParams, const AnimProgress>);
+	//projectileRegistry.group<const BitmapMuzzleFlame>(entt::get<const DrawRadius, const RenderData, const AnimParams, const AnimProgress, const CreateFrame>);
 	
-	//registry.group<Rotation, const RotParams>(entt::get<const CreateFrame>);
+	//projectileRegistry.group<Rotation, const RotParams>(entt::get<const CreateFrame>);
 	
 
 }
@@ -177,7 +177,6 @@ void CProjectileHandler::AddECSProjectile(CSimpleParticleSystem* proj) {
 	//TracyPlot("drawOrdSPS", (float)proj->drawOrder);
 	for (int i=0; i< proj->GetProjectilesCount(); ++i)
 	{
-		auto& particles = proj->particles;
 		auto ent = projectileRegistry.create();
 		projectileRegistry.emplace<SimpleParticleSystemTag>(ent);
 		auto& p = proj->particles[i];
@@ -185,17 +184,28 @@ void CProjectileHandler::AddECSProjectile(CSimpleParticleSystem* proj) {
 			p.pos, p.speed,proj->gravity, proj->airdrag,
 			p.rotVal, p.rotVel, proj->rotParams,
 			p.life, p.decayrate, p.size,
-			proj->sizeGrowth, proj->sizeMod, proj->allyteamID
+			proj->sizeGrowth, proj->sizeMod, proj->allyteamID,
+			proj->drawRadius, DrawOrder{proj->drawOrder, 0.0f},
+			RenderData{proj->texture, nullptr, proj->colorMap, proj->directional}
 		);
+		
+		projectileRegistry.emplace<AnimParams2>(ent, proj->animProgress, proj->animParams, proj->createFrame);
+		
+		if (proj->castShadow) {
+			projectileRegistry.emplace<CastShadowTag>(ent);
+		}
+		
+		/*
 		
 		projectileRegistry.emplace<DrawRadius>(ent, proj->drawRadius);
 		projectileRegistry.emplace<DrawPosition>(ent, p.pos);//proj->drawPos);
 		projectileRegistry.emplace<DrawOrder>(ent, proj->drawOrder, 0.0f);
-		projectileRegistry.emplace<AlliedTeam>(ent, proj->allyteamID); // TODO maybe ignore this component if team is not set?
+		// projectileRegistry.emplace<AlliedTeam>(ent, proj->allyteamID); // TODO maybe ignore this component if team is not set?
 
-		projectileRegistry.emplace<AnimParams2>(ent, proj->animProgress, proj->animParams, proj->createFrame);
+
 
 		projectileRegistry.emplace<RenderData>(ent, proj->texture, nullptr, proj->colorMap, proj->directional);
+		*/
 	}
 }
 
@@ -611,15 +621,15 @@ void CProjectileHandler::UpdateProjectilesImpl()
 		}
 		
 		size_t s = pc.size();
-		//for(size_t i =0; i < s; ++i) {
-		for_mt_chunk(0, pc.size(), [&pc](int i) {	
+		for(size_t i =0; i < s; ++i) {
+		//for_mt_chunk(0, pc.size(), [&pc](int i) {	
 			CProjectile* p = pc[i];
 			assert(p != nullptr);
 
 			MAPPOS_SANITY_CHECK(p->pos);
 			p->Update();
 			MAPPOS_SANITY_CHECK(p->pos);
-		});
+		}//);
 		//ecs_process_future.wait();
 	}
 }

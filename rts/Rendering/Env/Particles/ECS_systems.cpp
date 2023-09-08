@@ -54,7 +54,7 @@ To do:
 
 extern entt::registry projectileRegistry;
 
-extern std::vector<std::pair<int, float>> enqueuedProjectilesDrawOrderData;
+extern std::vector<uint64_t> enqueuedProjectilesDrawOrderData;
 
 namespace {
 static void AddEffectsQuad(int drawOrder, float sortDist, const VA_TYPE_TC& tl, const VA_TYPE_TC& tr, const VA_TYPE_TC& br, const VA_TYPE_TC& bl, const float3& animInfo)
@@ -82,7 +82,8 @@ static void AddEffectsQuad(int drawOrder, float sortDist, const VA_TYPE_TC& tl, 
 		{ bl.pos, float3{ bl.s, bl.t, layer }, uvInfo, animInfo, bl.c }
 	);
 	
-	enqueuedProjectilesDrawOrderData.push_back(std::pair{drawOrder, -sortDist});
+	uint64_t order (static_cast<uint32_t>(drawOrder) << 31 | static_cast<uint32_t>(-sortDist));
+	enqueuedProjectilesDrawOrderData.push_back(order);
 }
 
 
@@ -120,15 +121,23 @@ static bool IsValidTexture(const AtlasedTexture* tex)
 template <typename ViewT>
 static void DrawSimpleParticleSystem(entt::entity ent, ViewT&& view)
 {
+	/*
 	const auto& data = view.template get<const RenderData>(ent);	
 	const auto& drad = view.template get<const DrawRadius>(ent).value;
 	const auto& drawOrder = view.template get<const DrawOrder>(ent).drawOrder;
+	*/
+
 	const auto& a = view.template get<const AnimParams2>(ent);
 	const auto& d = view.template get<const SimpleParticle>(ent);
 
+		const auto& data = d.r;
+		const auto& drawOrder = d.drawo;
+		const auto& drad = d.drawRadius;
+		
+
 	if (!isParticleVisible(d.pos, d.pos, drad, d.allyteam, true)) {
 		return;
-	}	
+	}
 	
 	unsigned char color[4];
 	data.colorMap->GetColor(color, d.life);
@@ -148,7 +157,6 @@ static void DrawSimpleParticleSystem(entt::entity ent, ViewT&& view)
 		const float yDirLen2 = ydir.SqLength();
 		ydir.SafeANormalize();
 		const float3 xdir = ydir.cross(zdir);
-		const float3* fwdDir = &zdir;
 
 		if (yDirLen2 > 0.001f) {
 			bounds = {
@@ -174,12 +182,12 @@ static void DrawSimpleParticleSystem(entt::entity ent, ViewT&& view)
 		};
 	}
 
-	if (math::fabs(d.rotVal) > 0.01f) {
+	if (std::fabs(d.rotVal) > 0.01f) {
 		for (auto& b : bounds)
 			b = b.rotate<false>(d.rotVal, camera->GetForward());
 	}
 
-	AddEffectsQuad(drawOrder, camera->ProjectedDistance(d.pos),
+	AddEffectsQuad(//drawOrder, camera->ProjectedDistance(d.pos),
 		{ interPos + bounds[0], data.texture->xstart, data.texture->ystart, color },
 		{ interPos + bounds[1], data.texture->xend,   data.texture->ystart, color },
 		{ interPos + bounds[2], data.texture->xend,   data.texture->yend,   color },
@@ -780,24 +788,42 @@ static void DispatchDrawingECS(entt::entity ent, ViewT&& view) {
 // this is a temporary compatible solution that respects drawing order and
 // prevents any graphical artifacts when drawing mixed ECS and legacy OOP projectiles
 // this approach uses runtime look up of the components type
+// Problem? It's slow. It's better to iterate over projectile type and do distance sorting
+// in a different way, e.g. by modyfing index buffer later.
+//void DrawSystem(const std::vector<std::pair<std::pair<int, float>, CProjectile*>>& sortedProj)
+//{
+//	projectileRegistry.sort<DrawOrder>([](const auto &lhs, const auto &rhs) {
+//		return std::pair(lhs.drawOrder, lhs.distanceFromCamera) < std::pair(rhs.drawOrder, rhs.distanceFromCamera);
+//	});
+
+//	auto projIt = sortedProj.begin();
+//	projectileRegistry.view<const DrawOrder/*, const VisibleTag*/>().each([&](auto ent, const auto& drawOrder) {
+//		const auto dist = std::pair{drawOrder.drawOrder, drawOrder.distanceFromCamera};
+//		while (projIt != sortedProj.end() && projIt->first < dist) {
+//			projIt->second->Draw();
+//			++projIt;
+//		}	
+
+//		DispatchDrawingECS(ent, projectileRegistry);
+//	});
+
+//	while (projIt != sortedProj.end()) {
+//		projIt->second->Draw();
+//		++projIt;
+//	}
+//}
+
+
+// unsorted
 void DrawSystem(const std::vector<std::pair<std::pair<int, float>, CProjectile*>>& sortedProj)
 {
-
-	projectileRegistry.sort<DrawOrder>([](const auto &lhs, const auto &rhs) {
-		return std::pair(lhs.drawOrder, lhs.distanceFromCamera) < std::pair(rhs.drawOrder, rhs.distanceFromCamera);
-	});
-
+	DrawSimpleParticleSystem(
+		projectileRegistry.view<const SimpleParticle, const AnimParams2/*, const DrawOrder,
+				const DrawRadius, const RenderData*/>()
+	);
+	
+	// draw the rest
 	auto projIt = sortedProj.begin();
-	projectileRegistry.view<const DrawOrder/*, const VisibleTag*/>().each([&](auto ent, const auto& drawOrder) {
-		const auto dist = std::pair{drawOrder.drawOrder, drawOrder.distanceFromCamera};
-		while (projIt != sortedProj.end() && projIt->first < dist) {
-			projIt->second->Draw();
-			++projIt;
-		}
-
-		DispatchDrawingECS(ent, projectileRegistry);
-	});
-
 	while (projIt != sortedProj.end()) {
 		projIt->second->Draw();
 		++projIt;
@@ -807,7 +833,11 @@ void DrawSystem(const std::vector<std::pair<std::pair<int, float>, CProjectile*>
 
 void DrawShadowSystem()
 {
-	projectileRegistry.view<const VisibleTag, const CastShadowTag>().each([&](auto ent) {
-		DispatchDrawingECS(ent, projectileRegistry);
-	});
+//	projectileRegistry.view<const VisibleTag, const CastShadowTag>().each([&](auto ent) {
+//		DispatchDrawingECS(ent, projectileRegistry);
+//	});
+	
+	DrawSimpleParticleSystem(
+		projectileRegistry.view<const CastShadowTag, const SimpleParticle, const AnimParams2>()
+	);
 }

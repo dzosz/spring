@@ -37,6 +37,7 @@
 #include "System/StringUtil.h"
 #include "System/ScopedResource.h"
 #include <tuple>
+#include <span>
 
 CONFIG(int, SoftParticles).defaultValue(1).safemodeValue(0).description("Soften up CEG particles on clipping edges");
 
@@ -640,14 +641,11 @@ void CProjectileDrawer::DrawProjectileNow(CProjectile* pro, bool drawReflection,
 	pro->SetSortDist(cam->ProjectedDistance(pro->pos));	
 	if (drawSorted && pro->drawSorted) {
 		int drawOrder = pro->drawOrder;
-		
 		float sortDist = pro->sortDist;
 		sortedProjectiles.emplace_back(std::pair{std::pair{drawOrder, -sortDist}, pro});
 	} else {
-		//unsortedProjectiles.emplace_back(pro);
-		pro->Draw();
+		unsortedProjectiles.emplace_back(pro);
 	}
-
 }
 
 
@@ -770,7 +768,6 @@ void CProjectileDrawer::DrawFlyingPieces(int modelType) const
 	FlyingPiece::EndDraw();
 }
 
-
 void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 	DRAW_REFLECTION = drawReflection;
 	DRAW_REFRACTION = drawRefraction;
@@ -833,10 +830,56 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 		else
 		{
 			ZoneScopedN("Draw::Projectiles::Draw");
+			
+			// rb.EnableSorting()
+			
 			for (auto p : sortedProjectiles) {
 				p.second->Draw();
 			}
 		}
+		
+		
+		// quads from sorted projectiles are in the buffer.
+		// now apply drawing order onto index buffer
+		extern std::vector<uint64_t> enqueuedProjectilesDrawOrderData;
+	
+		if (!drawSorted) // turn on with /DistSortProjectiles
+		{
+			ZoneScopedN("ProjectileDrawer::SortQuads");
+			
+			auto& rb = CExpGenSpawnable::GetPrimaryRenderBuffer();
+			auto& indcs = rb.GetIndcs();
+			
+			auto numQuads = enqueuedProjectilesDrawOrderData.size();
+			if (indcs.size() < numQuads*6) {
+				// more data than quads, shouldn't happen
+				LOG("%lu %lu ", indcs.size(), numQuads*6);
+				assert(false);
+				throw 3;
+			}	
+			
+			auto arrayBufferIndices = std::span(rb.GetIndcs().end() - numQuads*6, numQuads*6); // get only last added quads
+			
+			static std::vector<uint32_t> newDrawOrderIndices;
+			newDrawOrderIndices.resize(arrayBufferIndices.size()/6); // each quad is 6 indices
+			assert(newDrawOrderIndices.size() <= enqueuedProjectilesDrawOrderData.size());
+					
+			std::iota(newDrawOrderIndices.begin(), newDrawOrderIndices.end(), 0); 
+			std::sort(newDrawOrderIndices.begin(), newDrawOrderIndices.end(), [&](const auto& l, const auto& r) {
+				return enqueuedProjectilesDrawOrderData[l] < enqueuedProjectilesDrawOrderData[r];
+			});
+			
+			uint32_t baseIndex = 0;
+			for (auto& i : newDrawOrderIndices) {
+				// newDrawOrderIndices is now sorted by {drawOrder, -cameraDistance}
+				// apply new order to array buffer
+				for (int j =0; j < 6 ; ++ j) {
+					arrayBufferIndices[baseIndex*6+j] += (i*4) - (baseIndex*4);
+				}
+				++baseIndex;
+			}
+		}
+		enqueuedProjectilesDrawOrderData.clear();	
 
 		for (auto p : unsortedProjectiles) {
 			p->Draw();
@@ -880,33 +923,6 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 		if (needSoften) {
 			fxShaders[needSoften]->SetUniform("softenThreshold", CProjectileDrawer::softenThreshold[0]);
 		}
-
-		auto& arrayBufferIndices = rb.GetIndcs();
-		extern std::vector<std::pair<int, float>> enqueuedProjectilesDrawOrderData;
-		if (!drawSorted)
-		{
-			ZoneScopedN("ProjectileDrawer::SortQuads");	
-			
-			static std::vector<uint32_t> newDrawOrderIndices;
-			newDrawOrderIndices.resize(arrayBufferIndices.size()/6); // each quad is 6 indices
-			assert(newDrawOrderIndices.size() == enqueuedProjectilesDrawOrderData.size());
-			
-			std::iota(newDrawOrderIndices.begin(), newDrawOrderIndices.end(), 0); 
-			std::sort(newDrawOrderIndices.begin(), newDrawOrderIndices.end(), [&](const auto& l, const auto& r) {
-				return enqueuedProjectilesDrawOrderData[l] < enqueuedProjectilesDrawOrderData[r]; // sort indices using {drawOrd, camDistance};
-			});
-			
-			uint32_t baseIndex = 0;
-			for (auto& i : newDrawOrderIndices) {
-				// newDrawOrderIndices is now sorted by {drawOrder, -cameraDistance}
-				// apply new order to array buffer
-				for (int j =0; j < 6 ; ++ j) {
-					arrayBufferIndices[baseIndex*6+j] += (i*4) - (baseIndex*4);
-				}
-				++baseIndex;
-			}			
-		}
-		enqueuedProjectilesDrawOrderData.clear();	
 		
 		rb.DrawElements(GL_TRIANGLES);
 
