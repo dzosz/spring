@@ -54,356 +54,6 @@ void AddEffectsQuad(const VA_TYPE_TC& tl, const VA_TYPE_TC& tr, const VA_TYPE_TC
 	);
 }
 
-class SoA
-{
-public:
-	std::vector<float3> pos;
-	std::vector<float3> speed;
-
-	std::vector<float> rotVal;
-	std::vector<float> rotVel;
-	std::vector<float> rotParams; // rotParams.y; //rot accel
-
-	std::vector<float> life;
-	std::vector<float> decayrate;
-	
-	std::vector<float> size;
-	std::vector<float> sizeGrowth;
-	std::vector<float> sizeMod;
-	
-	std::vector<float3> gravity;
-	std::vector<float> airdrag;
-	
-	std::vector<bool> visible;
-	std::vector<int> allyTeam;
-	
-	std::vector<float> drawRadius;
-	std::vector<int> drawOrder;
-	
-	std::vector<bool> directional;
-	
-	std::vector<bool> castShadow;
-	std::vector<bool> alwaysVisible;
-		
-	void add(CSimpleParticleSystem& p, float3 offset) {
-		// LOG("xyz add %i %i %f %f", pos.size(), p.numParticles, p.particleLife, p.sizeGrowth);
-		const float3 up = p.emitVector;
-		const float3 right = up.cross(float3(up.y, up.z, -up.x));
-		const float3 forward = up.cross(right);
-		
-		for (int i = 0 ; i < p.numParticles; ++i) {
-			float az = guRNG.NextFloat() * math::TWOPI;
-			float ay = (p.emitRot + (p.emitRotSpread * guRNG.NextFloat())) * math::DEG_TO_RAD;
-	
-			pos.push_back(offset);
-			speed.push_back(((up * p.emitMul.y) * fastmath::cos(ay) - ((right * p.emitMul.x) * fastmath::cos(az) - (forward * p.emitMul.z) * fastmath::sin(az)) * fastmath::sin(ay)) * (p.particleSpeed + (guRNG.NextFloat() * p.particleSpeedSpread)));
-			
-			rotVal.push_back(p.rotParams.z);
-			rotVel.push_back(p.rotParams.x); //initial rotation velocity
-			rotParams.push_back(p.rotParams.y);
-			
-			life.push_back(0.0f);
-			decayrate.push_back(1.0f / (p.particleLife + (guRNG.NextFloat() * p.particleLifeSpread)));
-			
-			size.push_back(p.particleSize + guRNG.NextFloat()*p.particleSizeSpread);
-			sizeGrowth.push_back(p.sizeGrowth);
-			sizeMod.push_back(p.sizeMod);
-			
-			gravity.push_back(p.gravity);
-			airdrag.push_back(p.airdrag);
-			
-			visible.push_back(true);
-			allyTeam.push_back(p.allyteamID);
-						
-			// draw
-			
-			colorMap.emplace_back(p.colorMap);
-			color.emplace_back();
-			
-			interPos.emplace_back();
-			bounds.emplace_back();
-			texture.emplace_back(p.texture);
-			
-			anims.emplace_back(p.animParams);
-			aprogress.emplace_back(p.animProgress);
-			createFrame.emplace_back(p.createFrame);
-			
-			drawRadius.emplace_back(p.drawRadius);
-			drawOrder.emplace_back(p.drawOrder);
-			
-			directional.push_back(p.directional);
-			
-			alwaysVisible.emplace_back(p.alwaysVisible);
-			castShadow.emplace_back(p.castShadow);	
-		}
-
-	}
-	
-	void update() {		
-		for (int i =0; i < pos.size(); ++i) {
-			pos[i]    += speed[i];
-			speed[i]  += gravity[i];
-			speed[i]  *= airdrag[i];
-		}
-		for (int i =0; i < pos.size(); ++i) {
-			rotVal[i] += rotVel[i];
-			rotVel[i] += rotParams[i];
-		}
-		for (int i =0; i < pos.size(); ++i) {
-			life[i] += decayrate[i];
-		}
-		
-		check_dead();
-		
-		for (int i =0; i < pos.size(); ++i) {
-			size[i] = size[i] * sizeMod[i] + sizeGrowth[i];
-		}		
-	}
-	
-	void check_dead() {
-		for (int i =0; i < pos.size();) {
-			if unlikely(life[i] >= 1.0) {
-				erase(i);		
-			} else 
-			{
-				++i;
-			}			
-		}
-	}
-	
-	void erase(int idx) {
-		remove_from_container(idx, pos);
-		remove_from_container(idx, speed);
-		
-		remove_from_container(idx, rotVal);
-		remove_from_container(idx, rotVel);		
-		remove_from_container(idx, rotParams);
-		
-		remove_from_container(idx, life);
-		remove_from_container(idx, decayrate);
-		
-		remove_from_container(idx, size);
-		remove_from_container(idx, sizeGrowth);
-		remove_from_container(idx, sizeMod);
-		
-		remove_from_container(idx, gravity);
-		remove_from_container(idx, airdrag);
-		
-		remove_from_container(idx, visible);
-		remove_from_container(idx, allyTeam);
-		
-		// draw
-		remove_from_container(idx, colorMap);
-		remove_from_container(idx, color);
-		
-		remove_from_container(idx, interPos);		
-		remove_from_container(idx, bounds);
-		remove_from_container(idx, texture);		
-		
-		remove_from_container(idx, anims);
-		remove_from_container(idx, aprogress);
-		remove_from_container(idx, createFrame);
-		
-		remove_from_container(idx, drawRadius);
-		remove_from_container(idx, drawOrder);
-		
-		remove_from_container(idx, directional);
-		
-		remove_from_container(idx, castShadow);
-		remove_from_container(idx, alwaysVisible);
-	}
-	
-	template <typename T>
-	void remove_from_container(int idx, T&& cont) {
-		cont[idx] = cont.back();
-		cont.pop_back();
-	}
-	
-	
-	std::vector<CColorMap*> colorMap;
-	std::vector<std::array<unsigned char, 4>> color;
-	std::vector<float3> interPos;
-	
-	std::vector<std::array<float3, 4>> bounds;
-	std::vector<AtlasedTexture*> texture;
-	
-	std::vector<float3> anims;
-	std::vector<float> aprogress;
-	std::vector<int> createFrame;
-	
-	void draw() {
-		updateAnimParams();
-		
-		for (int i =0; i < pos.size(); ++i) {
-			colorMap[i]->GetColor(color[i].data(), life[i]);
-		}
-		
-		float timeOffset = globalRendering->timeOffset;
-		for (int i =0; i < pos.size(); ++i) {
-			interPos[i] = pos[i] + speed[i] * timeOffset;
-		}
-		
-		// visibility
-		const bool shadowPass = (camera->GetCamType() == CCamera::CAMTYPE_SHADOW);
-		auto spectatingFullView = gu->spectatingFullView;
-		auto myAllyTeam = gu->myAllyTeam;
-		auto& th = teamHandler;
-		auto& lh = losHandler;
-		
-		for (int i =0; i < pos.size(); ++i) {
-			visible[i] = 	
-				 (spectatingFullView || (th.IsValidAllyTeam(allyTeam[i]) && 
-				  th.Ally(allyTeam[i], myAllyTeam) ||
-				(lh->InLos(pos[i], myAllyTeam) || 
-				  lh->InAirLos(pos[i], myAllyTeam))));			
-		}
-		
-		if (!shadowPass && DRAW_REFRACTION) {
-			for (int i =0; i < pos.size(); ++i) {
-				visible[i] = visible[i] && interPos[i].y <= drawRadius[i];
-			}
-		}
-		auto* cam = camera;
-		for (int i =0; i < pos.size(); ++i) {
-			visible[i] = visible[i] && cam->InView(interPos[i], drawRadius[i]);
-		}
-		
-		for (int i =0; i < pos.size(); ++i) {
-			visible[i] = visible[i] || alwaysVisible[i];
-		}
-		
-		if (shadowPass) {
-			for (int i =0; i < pos.size(); ++i) {
-				visible[i] = visible[i] && castShadow[i];
-			}
-		}
-		
-		// bounds
-		/*
-		for (int i =0; i < pos.size(); ++i) {
-			const float3 cameraRight = cam->GetRight() * size[i];
-			const float3 cameraUp    = cam->GetUp()    * size[i];
-			
-			bounds[i] = {
-				-cameraRight - cameraUp,
-				 cameraRight - cameraUp,
-				 cameraRight + cameraUp,
-				-cameraRight + cameraUp
-			};
-		}*/
-		
-		// streflop alternative
-		const static auto safeANormalize = [&](const auto& ydir) {	
-			const float sql = ydir.SqLength();
-			if likely(sql > float3::nrm_eps()) {
-				return ydir * fastmath::isqrt_nosse(sql);
-			}
-			return ydir;
-		};
-	
-		auto cpos = cam->GetPos();
-		auto fwd = camera->GetForward();
-		
-		for (int i =0; i < pos.size(); ++i) {
-			if (!visible[i]) {
-				continue;
-			}
-			const float3 zdir = safeANormalize(pos[i] - cpos);
-			float3 ydir = zdir.cross(speed[i]);
-			float yDirLen2 = ydir.SqLength();
-			ydir = safeANormalize(ydir);
-			const float3 xdir = ydir.cross(zdir);
-
-			if (!shadowPass && directional[i] && yDirLen2 > 0.001f)
-			{
-				bounds[i] = {
-					-ydir * size[i] - xdir * size[i],
-					-ydir * size[i] + xdir * size[i],
-					 ydir * size[i] + xdir * size[i],
-					 ydir * size[i] - xdir * size[i]
-				};
-				if (std::fabs(rotVal[i]) > 0.01f) {
-					float3::rotate<false>(rotVal[i], zdir, bounds[i]);
-				}
-			}
-			else
-			{
-				const float3 cameraRight = camera->GetRight() * size[i];
-				const float3 cameraUp    = camera->GetUp()    * size[i];				
-				bounds[i] = {
-					-cameraRight - cameraUp,
-					 cameraRight - cameraUp,
-					 cameraRight + cameraUp,
-					-cameraRight + cameraUp
-				};
-				if (std::fabs(rotVal[i]) > 0.01f) {
-					float3::rotate<false>(rotVal[i], fwd, bounds[i]);
-				}
-			}
-		}		
-
-		/*
-		// TODO branchless?
-		
-		for (int i =0; i < pos.size(); ++i) {
-			if (!visible[i]) {
-				continue;
-			}
-			if (std::fabs(rotVal[i]) > 0.01f) {
-				float3::rotate<false>(rotVal[i], fwd, bounds[i]);
-			}
-		}
-		*/
-		
-		for (int i =0; i < pos.size(); ++i) {
-			if (!visible[i]) {
-				continue;
-			}
-			AddEffectsQuad(
-				{ interPos[i] + bounds[i][0], texture[i]->xstart, texture[i]->ystart, color[i].data() },
-				{ interPos[i] + bounds[i][1], texture[i]->xend,   texture[i]->ystart, color[i].data() },
-				{ interPos[i] + bounds[i][2], texture[i]->xend,   texture[i]->yend,   color[i].data() },
-				{ interPos[i] + bounds[i][3], texture[i]->xstart, texture[i]->yend,   color[i].data() },
-				anims[i], aprogress[i]
-			);
-			//enqueuedProjectilesDrawOrderData.push_back(std::pair{drawOrder[i], -cam->ProjectedDistance(pos[i])});
-			uint64_t order (static_cast<uint32_t>(drawOrder[i]) << 31 | static_cast<uint32_t>(-cam->ProjectedDistance(pos[i])));
-			enqueuedProjectilesDrawOrderData.push_back(order);
-			
-		}	
-	}
-	
-	
-	void updateAnimParams() {
-		int gameFrame = gs->frameNum;
-		float timeOffset = globalRendering->timeOffset;
-		
-		for (int i =0; i < pos.size(); ++i)
-		{
-			auto& animParams = anims[i];
-			auto& animProgress = aprogress[i];
-			if (static_cast<int>(animParams.x) <= 1 && static_cast<int>(animParams.y) <= 1) {
-				animProgress = 0.0f;
-				continue;
-			}
-		
-			const float t = (gameFrame + timeOffset - createFrame[i]);
-			const float animSpeed = std::fabs(animParams.z);
-			
-			if (animParams.z < 0.0f) {
-				animProgress = 1.0f - std::fabs(std::fmod(t, 2.0f * animSpeed) / animSpeed - 1.0f);
-			}
-			else {
-				animProgress = std::fmod(t, animSpeed) / animSpeed;
-			}
-		}
-	}
-
-};
-
-static SoA SOA;
-
-
 CR_BIND_DERIVED(CSimpleParticleSystem, CProjectile, )
 
 CR_REG_METADATA(CSimpleParticleSystem,
@@ -616,19 +266,19 @@ int CSimpleParticleSystem::GetProjectilesCount() const
 void CSphereParticleSpawner::Draw()
 {
 	ZoneScopedN("SPS::Draw");	
-	SOA.draw();
+	simpleParticleSystem.Draw();
 
 }
 
 void CSphereParticleSpawner::Update()
 {
 	ZoneScopedN("SPS::Update");	
-	SOA.update();
+	simpleParticleSystem.Update();
 }
 
 int CSphereParticleSpawner::GetProjectilesCount() const
 {
-	return SOA.pos.size();
+	return simpleParticleSystem.NumParticles();
 }
 
 
@@ -717,7 +367,7 @@ CSphereParticleSpawner::CSphereParticleSpawner()
 
 void CSphereParticleSpawner::GenerateParticles(const float3& pos)
 {
-	SOA.add(*this, pos);
+	simpleParticleSystem.Add(*this, pos);
 }
 
 void CSphereParticleSpawner::Clear()
@@ -758,4 +408,305 @@ void CSphereParticleSpawner::Clear()
 	numParticles=(0);
 	animParams = { 1.0f, 1.0f, 30.0f };
 	animProgress = 0.0f;
+}
+
+void CSimpleParticleSystemSoA::Add(CSimpleParticleSystem& p, float3 offset) {
+	// LOG("xyz add %i %i %f %f", pos.size(), p.numParticles, p.particleLife, p.sizeGrowth);
+	const float3 up = p.emitVector;
+	const float3 right = up.cross(float3(up.y, up.z, -up.x));
+	const float3 forward = up.cross(right);
+	
+	for (int i = 0 ; i < p.numParticles; ++i) {
+		float az = guRNG.NextFloat() * math::TWOPI;
+		float ay = (p.emitRot + (p.emitRotSpread * guRNG.NextFloat())) * math::DEG_TO_RAD;
+
+		pos.push_back(offset);
+		speed.push_back(((up * p.emitMul.y) * fastmath::cos(ay) - ((right * p.emitMul.x) * fastmath::cos(az) - (forward * p.emitMul.z) * fastmath::sin(az)) * fastmath::sin(ay)) * (p.particleSpeed + (guRNG.NextFloat() * p.particleSpeedSpread)));
+		
+		rotVal.push_back(p.rotParams.z);
+		rotVel.push_back(p.rotParams.x); //initial rotation velocity
+		rotParams.push_back(p.rotParams.y);
+		
+		life.push_back(0.0f);
+		decayrate.push_back(1.0f / (p.particleLife + (guRNG.NextFloat() * p.particleLifeSpread)));
+		
+		size.push_back(p.particleSize + guRNG.NextFloat()*p.particleSizeSpread);
+		sizeGrowth.push_back(p.sizeGrowth);
+		sizeMod.push_back(p.sizeMod);
+		
+		gravity.push_back(p.gravity);
+		airdrag.push_back(p.airdrag);
+		
+		visible.push_back(true);
+		allyTeam.push_back(p.allyteamID);
+					
+		// draw
+		colorMap.emplace_back(p.colorMap);
+		color.emplace_back();
+		
+		interPos.emplace_back();
+		bounds.emplace_back();
+		texture.emplace_back(p.texture);
+		
+		anims.emplace_back(p.animParams);
+		aprogress.emplace_back(p.animProgress);
+		createFrame.emplace_back(p.createFrame);
+		
+		drawRadius.emplace_back(p.drawRadius);
+		drawOrder.emplace_back(p.drawOrder);
+		
+		directional.push_back(p.directional);
+		
+		alwaysVisible.emplace_back(p.alwaysVisible);
+		castShadow.emplace_back(p.castShadow);	
+	}
+
+}
+	
+void CSimpleParticleSystemSoA::Update() {		
+	for (int i =0; i < pos.size(); ++i) {
+		pos[i]    += speed[i];
+		speed[i]  += gravity[i];
+		speed[i]  *= airdrag[i];
+	}
+	for (int i =0; i < pos.size(); ++i) {
+		rotVal[i] += rotVel[i];
+		rotVel[i] += rotParams[i];
+	}
+	for (int i =0; i < pos.size(); ++i) {
+		life[i] += decayrate[i];
+	}
+	
+	CheckDead();
+	
+	for (int i =0; i < pos.size(); ++i) {
+		size[i] = size[i] * sizeMod[i] + sizeGrowth[i];
+	}		
+}
+	
+void CSimpleParticleSystemSoA::CheckDead() {
+	for (int i =0; i < pos.size();) {
+		if unlikely(life[i] >= 1.0) {
+			this->Erase(i);		
+		} else 
+		{
+			++i;
+		}			
+	}
+}
+
+template <typename T>
+void remove_from_container(int idx, T&& cont) {
+	cont[idx] = cont.back();
+	cont.pop_back();
+}
+
+void CSimpleParticleSystemSoA::Erase(int idx) {
+	remove_from_container(idx, pos);
+	remove_from_container(idx, speed);
+	
+	remove_from_container(idx, rotVal);
+	remove_from_container(idx, rotVel);		
+	remove_from_container(idx, rotParams);
+	
+	remove_from_container(idx, life);
+	remove_from_container(idx, decayrate);
+	
+	remove_from_container(idx, size);
+	remove_from_container(idx, sizeGrowth);
+	remove_from_container(idx, sizeMod);
+	
+	remove_from_container(idx, gravity);
+	remove_from_container(idx, airdrag);
+	
+	remove_from_container(idx, visible);
+	remove_from_container(idx, allyTeam);
+	
+	// draw
+	remove_from_container(idx, colorMap);
+	remove_from_container(idx, color);
+	
+	remove_from_container(idx, interPos);		
+	remove_from_container(idx, bounds);
+	remove_from_container(idx, texture);		
+	
+	remove_from_container(idx, anims);
+	remove_from_container(idx, aprogress);
+	remove_from_container(idx, createFrame);
+	
+	remove_from_container(idx, drawRadius);
+	remove_from_container(idx, drawOrder);
+	
+	remove_from_container(idx, directional);
+	
+	remove_from_container(idx, castShadow);
+	remove_from_container(idx, alwaysVisible);
+}
+	
+void CSimpleParticleSystemSoA::Draw() {
+	this->UpdateAnimParams();
+	
+	for (int i =0; i < pos.size(); ++i) {
+		colorMap[i]->GetColor(color[i].data(), life[i]);
+	}
+	
+	float timeOffset = globalRendering->timeOffset;
+	for (int i =0; i < pos.size(); ++i) {
+		interPos[i] = pos[i] + speed[i] * timeOffset;
+	}
+	
+	// visibility
+	const bool shadowPass = (camera->GetCamType() == CCamera::CAMTYPE_SHADOW);
+	auto spectatingFullView = gu->spectatingFullView;
+	auto myAllyTeam = gu->myAllyTeam;
+	auto& th = teamHandler;
+	auto& lh = losHandler;
+	
+	for (int i =0; i < pos.size(); ++i) {
+		visible[i] = 	
+			 (spectatingFullView || (th.IsValidAllyTeam(allyTeam[i]) && 
+			  th.Ally(allyTeam[i], myAllyTeam) ||
+			(lh->InLos(pos[i], myAllyTeam) || 
+			  lh->InAirLos(pos[i], myAllyTeam))));			
+	}
+	
+	if (!shadowPass && DRAW_REFRACTION) {
+		for (int i =0; i < pos.size(); ++i) {
+			visible[i] = visible[i] && interPos[i].y <= drawRadius[i];
+		}
+	}
+	auto* cam = camera;
+	for (int i =0; i < pos.size(); ++i) {
+		visible[i] = visible[i] && cam->InView(interPos[i], drawRadius[i]);
+	}
+	
+	for (int i =0; i < pos.size(); ++i) {
+		visible[i] = visible[i] || alwaysVisible[i];
+	}
+	
+	if (shadowPass) {
+		for (int i =0; i < pos.size(); ++i) {
+			visible[i] = visible[i] && castShadow[i];
+		}
+	}
+	
+	// bounds
+	/*
+	for (int i =0; i < pos.size(); ++i) {
+		const float3 cameraRight = cam->GetRight() * size[i];
+		const float3 cameraUp    = cam->GetUp()    * size[i];
+		
+		bounds[i] = {
+			-cameraRight - cameraUp,
+			 cameraRight - cameraUp,
+			 cameraRight + cameraUp,
+			-cameraRight + cameraUp
+		};
+	}*/
+	
+	// streflop alternative
+	const static auto safeANormalize = [&](const auto& ydir) {	
+		const float sql = ydir.SqLength();
+		if likely(sql > float3::nrm_eps()) {
+			return ydir * fastmath::isqrt_nosse(sql);
+		}
+		return ydir;
+	};
+
+	auto cpos = cam->GetPos();
+	auto fwd = camera->GetForward();
+	
+	for (int i =0; i < pos.size(); ++i) {
+		if (!visible[i]) {
+			continue;
+		}
+		const float3 zdir = safeANormalize(pos[i] - cpos);
+		float3 ydir = zdir.cross(speed[i]);
+		float yDirLen2 = ydir.SqLength();
+		ydir = safeANormalize(ydir);
+		const float3 xdir = ydir.cross(zdir);
+
+		if (!shadowPass && directional[i] && yDirLen2 > 0.001f)
+		{
+			bounds[i] = {
+				-ydir * size[i] - xdir * size[i],
+				-ydir * size[i] + xdir * size[i],
+				 ydir * size[i] + xdir * size[i],
+				 ydir * size[i] - xdir * size[i]
+			};
+			if (std::fabs(rotVal[i]) > 0.01f) {
+				float3::rotate<false>(rotVal[i], zdir, bounds[i]);
+			}
+		}
+		else
+		{
+			const float3 cameraRight = camera->GetRight() * size[i];
+			const float3 cameraUp    = camera->GetUp()    * size[i];				
+			bounds[i] = {
+				-cameraRight - cameraUp,
+				 cameraRight - cameraUp,
+				 cameraRight + cameraUp,
+				-cameraRight + cameraUp
+			};
+			if (std::fabs(rotVal[i]) > 0.01f) {
+				float3::rotate<false>(rotVal[i], fwd, bounds[i]);
+			}
+		}
+	}		
+
+	/*
+	// TODO branchless?
+	
+	for (int i =0; i < pos.size(); ++i) {
+		if (!visible[i]) {
+			continue;
+		}
+		if (std::fabs(rotVal[i]) > 0.01f) {
+			float3::rotate<false>(rotVal[i], fwd, bounds[i]);
+		}
+	}
+	*/
+	
+	for (int i =0; i < pos.size(); ++i) {
+		if (!visible[i]) {
+			continue;
+		}
+		AddEffectsQuad(
+			{ interPos[i] + bounds[i][0], texture[i]->xstart, texture[i]->ystart, color[i].data() },
+			{ interPos[i] + bounds[i][1], texture[i]->xend,   texture[i]->ystart, color[i].data() },
+			{ interPos[i] + bounds[i][2], texture[i]->xend,   texture[i]->yend,   color[i].data() },
+			{ interPos[i] + bounds[i][3], texture[i]->xstart, texture[i]->yend,   color[i].data() },
+			anims[i], aprogress[i]
+		);
+		//enqueuedProjectilesDrawOrderData.push_back(std::pair{drawOrder[i], -cam->ProjectedDistance(pos[i])});
+		uint64_t order (static_cast<uint32_t>(drawOrder[i]) << 31 | static_cast<uint32_t>(-cam->ProjectedDistance(pos[i])));
+		enqueuedProjectilesDrawOrderData.push_back(order);
+		
+	}	
+}
+	
+	
+void CSimpleParticleSystemSoA::UpdateAnimParams() {
+	int gameFrame = gs->frameNum;
+	float timeOffset = globalRendering->timeOffset;
+	
+	for (int i =0; i < pos.size(); ++i)
+	{
+		auto& animParams = anims[i];
+		auto& animProgress = aprogress[i];
+		if (static_cast<int>(animParams.x) <= 1 && static_cast<int>(animParams.y) <= 1) {
+			animProgress = 0.0f;
+			continue;
+		}
+	
+		const float t = (gameFrame + timeOffset - createFrame[i]);
+		const float animSpeed = std::fabs(animParams.z);
+		
+		if (animParams.z < 0.0f) {
+			animProgress = 1.0f - std::fabs(std::fmod(t, 2.0f * animSpeed) / animSpeed - 1.0f);
+		}
+		else {
+			animProgress = std::fmod(t, animSpeed) / animSpeed;
+		}
+	}
 }

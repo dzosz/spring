@@ -18,7 +18,8 @@ class CSimpleParticleSystem : public CProjectile
 
 public:
 	friend class CProjectileHandler;
-	friend class SoA;
+	friend class CSimpleParticleSystemSoA;
+	friend class CCustomExplosionGenerator;
 	CSimpleParticleSystem();
 	virtual ~CSimpleParticleSystem() { particles.clear(); }
 
@@ -98,5 +99,61 @@ private:
 	
 	bool initialized=false;
 };
+
+class CSimpleParticleSystemSoA
+{
+public:
+	void Update();
+	void Draw();
+	void Add(CSimpleParticleSystem& p, float3 offset); // TODO use thinner CSimpleParticleSystem
+	size_t NumParticles() const { return pos.size(); }
+private:
+	void CheckDead();	
+	void Erase(int idx);	
+	void UpdateAnimParams();
+	
+	// update data
+	std::vector<float3> pos;
+	std::vector<float3> speed;
+
+	std::vector<float> rotVal;
+	std::vector<float> rotVel;
+	std::vector<float> rotParams; // rotParams.y; //rot accel
+
+	std::vector<float> life;
+	std::vector<float> decayrate;
+	
+	std::vector<float> size;
+	std::vector<float> sizeGrowth;
+	std::vector<float> sizeMod;
+	
+	std::vector<float3> gravity;
+	std::vector<float> airdrag;
+	
+	std::vector<bool> visible;
+	std::vector<int> allyTeam;
+	
+	std::vector<float> drawRadius;
+	std::vector<int> drawOrder;
+	
+	std::vector<bool> directional;
+	
+	// draw data
+	std::vector<bool> castShadow;
+	std::vector<bool> alwaysVisible;
+	
+	std::vector<CColorMap*> colorMap;
+	std::vector<std::array<unsigned char, 4>> color;
+	std::vector<float3> interPos;
+	
+	std::vector<std::array<float3, 4>> bounds;
+	std::vector<AtlasedTexture*> texture;
+	
+	std::vector<float3> anims;
+	std::vector<float> aprogress;
+	std::vector<int> createFrame;
+};
+
+static inline CSimpleParticleSystemSoA simpleParticleSystem;
 
 #endif // SIMPLE_PARTICLE_SYSTEM_H
