@@ -85,7 +85,6 @@ class CSphereParticleSpawner : public CSimpleParticleSystem {
 	CR_DECLARE_DERIVED(CSphereParticleSpawner)
 public:
 	CSphereParticleSpawner();
-	virtual ~CSphereParticleSpawner();
 
 	void Draw() override;
 	void Update() override;
@@ -93,6 +92,11 @@ public:
 	void Init(const CUnit* owner, const float3& offset) override;
 
 	static bool GetMemberInfo(SExpGenSpawnableMemberInfo& memberInfo);
+private:
+	void Clear();
+	void GenerateParticles(const float3& pos);
+	
+	bool initialized=false;
 };
 
 #endif // SIMPLE_PARTICLE_SYSTEM_H

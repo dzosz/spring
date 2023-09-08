@@ -24,7 +24,7 @@
 
 extern bool DRAW_REFLECTION;
 extern bool DRAW_REFRACTION;
-extern std::vector<std::pair<int, float>> enqueuedProjectilesDrawOrderData;
+extern std::vector<uint64_t> enqueuedProjectilesDrawOrderData;
 
 void AddEffectsQuad(const VA_TYPE_TC& tl, const VA_TYPE_TC& tr, const VA_TYPE_TC& br, const VA_TYPE_TC& bl,
 					const float3& animParams, const float& animProgress)
@@ -81,6 +81,9 @@ public:
 	std::vector<int> drawOrder;
 	
 	std::vector<bool> directional;
+	
+	std::vector<bool> castShadow;
+	std::vector<bool> alwaysVisible;
 		
 	void add(CSimpleParticleSystem& p, float3 offset) {
 		// LOG("xyz add %i %i %f %f", pos.size(), p.numParticles, p.particleLife, p.sizeGrowth);
@@ -111,9 +114,7 @@ public:
 			
 			visible.push_back(true);
 			allyTeam.push_back(p.allyteamID);
-			
-			directional.push_back(p.directional);
-			
+						
 			// draw
 			
 			colorMap.emplace_back(p.colorMap);
@@ -128,7 +129,12 @@ public:
 			createFrame.emplace_back(p.createFrame);
 			
 			drawRadius.emplace_back(p.drawRadius);
-			drawOrder.emplace_back(p.drawOrder);			
+			drawOrder.emplace_back(p.drawOrder);
+			
+			directional.push_back(p.directional);
+			
+			alwaysVisible.emplace_back(p.alwaysVisible);
+			castShadow.emplace_back(p.castShadow);	
 		}
 
 	}
@@ -186,8 +192,6 @@ public:
 		remove_from_container(idx, visible);
 		remove_from_container(idx, allyTeam);
 		
-		remove_from_container(idx, directional);
-		
 		// draw
 		remove_from_container(idx, colorMap);
 		remove_from_container(idx, color);
@@ -203,6 +207,10 @@ public:
 		remove_from_container(idx, drawRadius);
 		remove_from_container(idx, drawOrder);
 		
+		remove_from_container(idx, directional);
+		
+		remove_from_container(idx, castShadow);
+		remove_from_container(idx, alwaysVisible);
 	}
 	
 	template <typename T>
@@ -236,6 +244,7 @@ public:
 		}
 		
 		// visibility
+		const bool shadowPass = (camera->GetCamType() == CCamera::CAMTYPE_SHADOW);
 		auto spectatingFullView = gu->spectatingFullView;
 		auto myAllyTeam = gu->myAllyTeam;
 		auto& th = teamHandler;
@@ -245,11 +254,11 @@ public:
 			visible[i] = 	
 				 (spectatingFullView || (th.IsValidAllyTeam(allyTeam[i]) && 
 				  th.Ally(allyTeam[i], myAllyTeam) ||
-				lh->InLos(pos[i], myAllyTeam)) || 
-				  lh->InAirLos(pos[i], myAllyTeam));			
+				(lh->InLos(pos[i], myAllyTeam) || 
+				  lh->InAirLos(pos[i], myAllyTeam))));			
 		}
 		
-		if (DRAW_REFRACTION) {
+		if (!shadowPass && DRAW_REFRACTION) {
 			for (int i =0; i < pos.size(); ++i) {
 				visible[i] = visible[i] && interPos[i].y <= drawRadius[i];
 			}
@@ -257,6 +266,16 @@ public:
 		auto* cam = camera;
 		for (int i =0; i < pos.size(); ++i) {
 			visible[i] = visible[i] && cam->InView(interPos[i], drawRadius[i]);
+		}
+		
+		for (int i =0; i < pos.size(); ++i) {
+			visible[i] = visible[i] || alwaysVisible[i];
+		}
+		
+		if (shadowPass) {
+			for (int i =0; i < pos.size(); ++i) {
+				visible[i] = visible[i] && castShadow[i];
+			}
 		}
 		
 		// bounds
@@ -284,8 +303,6 @@ public:
 	
 		auto cpos = cam->GetPos();
 		auto fwd = camera->GetForward();
-		
-		const bool shadowPass = (camera->GetCamType() == CCamera::CAMTYPE_SHADOW);
 		
 		for (int i =0; i < pos.size(); ++i) {
 			if (!visible[i]) {
@@ -349,7 +366,10 @@ public:
 				{ interPos[i] + bounds[i][3], texture[i]->xstart, texture[i]->yend,   color[i].data() },
 				anims[i], aprogress[i]
 			);
-			enqueuedProjectilesDrawOrderData.push_back(std::pair{drawOrder[i], -cam->ProjectedDistance(pos[i])});
+			//enqueuedProjectilesDrawOrderData.push_back(std::pair{drawOrder[i], -cam->ProjectedDistance(pos[i])});
+			uint64_t order (static_cast<uint32_t>(drawOrder[i]) << 31 | static_cast<uint32_t>(-cam->ProjectedDistance(pos[i])));
+			enqueuedProjectilesDrawOrderData.push_back(order);
+			
 		}	
 	}
 	
@@ -597,6 +617,7 @@ void CSphereParticleSpawner::Draw()
 {
 	ZoneScopedN("SPS::Draw");	
 	SOA.draw();
+
 }
 
 void CSphereParticleSpawner::Update()
@@ -645,7 +666,6 @@ CR_REG_METADATA(CSphereParticleSpawner, )
 
 void CSphereParticleSpawner::Init(const CUnit* owner, const float3& offset)
 {
-	static bool initialized = false;
 	// LOG("xyz CSphereParticleSpawner::Init %i %p", initialized, this);
 	if (!initialized)
 	{
@@ -679,9 +699,31 @@ void CSphereParticleSpawner::Init(const CUnit* owner, const float3& offset)
 	
 	initialized = true;	
 	
-	SOA.add(*this, offset);
-	
-	//*this = CSphereParticleSpawner();
+	this->GenerateParticles(offset);
+	this->Clear();
+}
+
+bool CSphereParticleSpawner::GetMemberInfo(SExpGenSpawnableMemberInfo& memberInfo)
+{
+	return CSimpleParticleSystem::GetMemberInfo(memberInfo);
+}
+
+CSphereParticleSpawner::CSphereParticleSpawner()
+{
+	checkCol = false;
+	useAirLos = true;
+	alwaysVisible = true;
+}
+
+void CSphereParticleSpawner::GenerateParticles(const float3& pos)
+{
+	SOA.add(*this, pos);
+}
+
+void CSphereParticleSpawner::Clear()
+{
+	//*this = CSphereParticleSpawner(); // TODO why it doesn't work?
+	//return;
 
 	// ensure this object is always visible
 	speed = float4{};
@@ -696,8 +738,6 @@ void CSphereParticleSpawner::Init(const CUnit* owner, const float3& offset)
 	rotVal = {};
 	rotVel = {};
 
-	
-	// reset
 	emitVector = ZeroVector;
 	emitMul = {1.0f, 1.0f, 1.0};
 	gravity = ZeroVector;
@@ -718,19 +758,4 @@ void CSphereParticleSpawner::Init(const CUnit* owner, const float3& offset)
 	numParticles=(0);
 	animParams = { 1.0f, 1.0f, 30.0f };
 	animProgress = 0.0f;
-}
-
-bool CSphereParticleSpawner::GetMemberInfo(SExpGenSpawnableMemberInfo& memberInfo)
-{
-	return CSimpleParticleSystem::GetMemberInfo(memberInfo);
-}
-
-CSphereParticleSpawner::~CSphereParticleSpawner()
-{
-}
-
-CSphereParticleSpawner::CSphereParticleSpawner()
-{
-	checkCol = false;
-	useAirLos = true;
 }
