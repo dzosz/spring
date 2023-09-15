@@ -105,6 +105,7 @@ class CSimpleParticleSystemSoA
 public:
 	void Update();
 	void Draw();
+	void DrawOnMinimap() {};
 	void Add(CSimpleParticleSystem& p, float3 offset); // TODO use thinner CSimpleParticleSystem
 	size_t NumParticles() const { return pos.size(); }
 private:

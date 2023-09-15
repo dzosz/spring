@@ -755,10 +755,13 @@ static void DrawCSmokeTrailProjectile(entt::entity ent, ViewT&& view)
 void PreDrawSystem() {
 	ZoneScopedN("ECS::PreDrawSystem");
 	UpdateAnimProgressSystem(projectileRegistry.view<AnimParams2>()); 
+	/*
 	UpdateDrawPosSystem(projectileRegistry.view<const Position, DrawPosition>(entt::exclude<Speed>));
 	UpdateDrawPosSpeedSystem(projectileRegistry.view<const Position, const Speed, DrawPosition>());
 	UpdateDrawOrder(projectileRegistry.view<const DrawPosition, DrawOrder>());
+	
 	RotationSystem(projectileRegistry.group<Rotation, const RotParams>(entt::get<const CreateFrame>));
+	*/
 	//UpdateVisibilitySystem(projectileRegistry);
 	// TODO add update DrawRadius
 }
@@ -815,20 +818,12 @@ static void DispatchDrawingECS(entt::entity ent, ViewT&& view) {
 
 
 // unsorted
-void DrawSystem(const std::vector<std::pair<std::pair<int, float>, CProjectile*>>& sortedProj)
+void DrawSystem()
 {
 	DrawSimpleParticleSystem(
 		projectileRegistry.view<const SimpleParticle, const AnimParams2/*, const DrawOrder,
 				const DrawRadius, const RenderData*/>()
 	);
-	
-	// draw the rest
-	auto projIt = sortedProj.begin();
-	while (projIt != sortedProj.end()) {
-		projIt->second->Draw();
-		++projIt;
-	}
-
 }
 
 void DrawShadowSystem()

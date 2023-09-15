@@ -2,6 +2,7 @@
 
 #include "System/float3.h"
 #include "System/float4.h"
+#include "Sim/Projectiles/ExpGenSpawnableMemberInfo.h"
 
 struct ParticlePhys
 {

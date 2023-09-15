@@ -26,6 +26,7 @@
 #include "Sim/Projectiles/ProjectileHandler.h"
 #include "Sim/Projectiles/PieceProjectile.h"
 #include "Rendering/Env/Particles/Classes/FlyingPiece.h"
+#include "Rendering/Env/Particles/Classes/SimpleParticleSystem.h"
 #include "Sim/Projectiles/WeaponProjectiles/WeaponProjectile.h"
 #include "Sim/Weapons/WeaponDefHandler.h"
 #include "Sim/Weapons/WeaponDef.h"
@@ -719,6 +720,8 @@ void CProjectileDrawer::DrawProjectilesMiniMap()
 			p->DrawOnMinimap();
 		}
 	}
+	
+	simpleParticleSystem.DrawOnMinimap();
 
 	auto& sh = TypedRenderBuffer<VA_TYPE_C>::GetShader();
 
@@ -825,9 +828,9 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 		if (ECS_MODE) // NOTE runtime switch works even during pause
 		{
 			ZoneScopedN("Draw::Projectiles::Draw");
-			DrawSystem(sortedProjectiles);		
+			DrawSystem();		
 		}
-		else
+
 		{
 			ZoneScopedN("Draw::Projectiles::Draw");
 			
@@ -837,6 +840,7 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 				p.second->Draw();
 			}
 		}
+		simpleParticleSystem.Draw(); 
 		
 		
 		// quads from sorted projectiles are in the buffer.
@@ -966,7 +970,8 @@ void CProjectileDrawer::DrawShadowPassTransparent()
 
 	// draw the model-less projectiles
 	projectileRegistry.ctx().at<PhysDelta>().timeOffset = globalRendering->timeOffset;
-	DrawShadowSystem(); 
+	DrawShadowSystem();
+	simpleParticleSystem.Draw();
 	DrawProjectilesSetShadow(modellessProjectiles);
 
 	auto& rb = CExpGenSpawnable::GetPrimaryRenderBuffer();

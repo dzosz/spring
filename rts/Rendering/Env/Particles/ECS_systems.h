@@ -171,5 +171,5 @@ inline bool UpdateEndPos(unsigned int entId, float3 p, float3 dir)
 
 class CProjectile;
 void PreDrawSystem();
-void DrawSystem(const std::vector<std::pair<std::pair<int, float>, CProjectile*>>&);
+void DrawSystem();
 void DrawShadowSystem();
