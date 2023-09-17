@@ -96,8 +96,6 @@ public:
 private:
 	void Clear();
 	void GenerateParticles(const float3& pos);
-	
-	bool initialized=false;
 };
 
 class CSimpleParticleSystemSoA
@@ -105,7 +103,9 @@ class CSimpleParticleSystemSoA
 public:
 	void Update();
 	void Draw();
-	void DrawOnMinimap() {};
+	void DrawShadow();
+	void PreDraw();
+	void DrawOnMinimap();
 	void Add(CSimpleParticleSystem& p, float3 offset); // TODO use thinner CSimpleParticleSystem
 	size_t NumParticles() const { return pos.size(); }
 private:
@@ -132,6 +132,9 @@ private:
 	std::vector<float> airdrag;
 	
 	std::vector<bool> visible;
+	std::vector<bool> visibleShadow;
+	std::vector<bool> visibleRefraction;
+	std::vector<bool> visibleReflection;
 	std::vector<int> allyTeam;
 	
 	std::vector<float> drawRadius;
@@ -155,6 +158,6 @@ private:
 	std::vector<int> createFrame;
 };
 
-static inline CSimpleParticleSystemSoA simpleParticleSystem;
+extern CSimpleParticleSystemSoA simpleParticleSystem;
 
 #endif // SIMPLE_PARTICLE_SYSTEM_H

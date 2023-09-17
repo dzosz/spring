@@ -18,10 +18,13 @@
 #include "System/float3.h"
 #include "System/Log/ILog.h"
 #include "System/SpringMath.h"
+#include "Rendering/Colors.h"
+#include "Game/CameraHandler.h"
 
 #include "System/BranchPrediction.h"
 
 
+CSimpleParticleSystemSoA simpleParticleSystem; 
 extern bool DRAW_REFLECTION;
 extern bool DRAW_REFRACTION;
 extern std::vector<uint64_t> enqueuedProjectilesDrawOrderData;
@@ -210,6 +213,7 @@ void CSimpleParticleSystem::Update()
 	deleteMe = true;
 	for (auto& p: particles) {
 		if (p.life < 1.0f) {
+			
 			p.pos    += p.speed;
 			p.speed  += gravity;
 			p.speed  *= airdrag;
@@ -265,15 +269,18 @@ int CSimpleParticleSystem::GetProjectilesCount() const
 
 void CSphereParticleSpawner::Draw()
 {
+	/*
 	ZoneScopedN("SPS::Draw");	
 	simpleParticleSystem.Draw();
-
+	*/
 }
 
 void CSphereParticleSpawner::Update()
 {
+	/*
 	ZoneScopedN("SPS::Update");	
 	simpleParticleSystem.Update();
+	*/
 }
 
 int CSphereParticleSpawner::GetProjectilesCount() const
@@ -316,26 +323,9 @@ CR_REG_METADATA(CSphereParticleSpawner, )
 
 void CSphereParticleSpawner::Init(const CUnit* owner, const float3& offset)
 {
+	deleteMe = true;
 	// LOG("xyz CSphereParticleSpawner::Init %i %p", initialized, this);
-	if (!initialized)
-	{
-		CProjectile::Init(owner, offset);
-	}
-	else 
-	{
-		if (owner != nullptr) {
-			ownerID = owner->id;
-			teamID = owner->team;
-			allyteamID =  teamHandler.IsValidTeam(teamID)? teamHandler.AllyTeam(teamID): -1;
-		}
-		createFrame = gs->frameNum;		
-		drawRadius = (particleSpeed + particleSpeedSpread) * (particleLife * particleLifeSpread);
-		
-		SetPosition(pos + offset);
-		SetVelocityAndSpeed(speed);
-		rotParams *= float3(math::DEG_TO_RAD / GAME_SPEED, math::DEG_TO_RAD / (GAME_SPEED * GAME_SPEED), math::DEG_TO_RAD);
-		UpdateRotation();
-	}
+	CProjectile::Init(owner, offset);
 	
 	// FIXME: should catch these earlier and for more projectile-types
 	if (colorMap == nullptr) {
@@ -347,10 +337,10 @@ void CSphereParticleSpawner::Init(const CUnit* owner, const float3& offset)
 		LOG_L(L_WARNING, "[CSphereParticleSpawner::%s] no texture specified", __FUNCTION__);
 	}
 	
-	initialized = true;	
+	drawRadius = (particleSpeed + particleSpeedSpread) * (particleLife * particleLifeSpread);
 	
 	this->GenerateParticles(offset);
-	this->Clear();
+	//this->Clear();
 }
 
 bool CSphereParticleSpawner::GetMemberInfo(SExpGenSpawnableMemberInfo& memberInfo)
@@ -411,7 +401,7 @@ void CSphereParticleSpawner::Clear()
 }
 
 void CSimpleParticleSystemSoA::Add(CSimpleParticleSystem& p, float3 offset) {
-	// LOG("xyz add %i %i %f %f", pos.size(), p.numParticles, p.particleLife, p.sizeGrowth);
+	//LOG("xyz add %i %i %f %f %f", pos.size(), p.numParticles, p.particleLife, p.sizeGrowth, p.particleLife);
 	const float3 up = p.emitVector;
 	const float3 right = up.cross(float3(up.y, up.z, -up.x));
 	const float3 forward = up.cross(right);
@@ -438,6 +428,9 @@ void CSimpleParticleSystemSoA::Add(CSimpleParticleSystem& p, float3 offset) {
 		airdrag.push_back(p.airdrag);
 		
 		visible.push_back(true);
+		visibleShadow.push_back(true);
+		visibleRefraction.push_back(true);
+		visibleReflection.push_back(true);
 		allyTeam.push_back(p.allyteamID);
 					
 		// draw
@@ -464,6 +457,7 @@ void CSimpleParticleSystemSoA::Add(CSimpleParticleSystem& p, float3 offset) {
 }
 	
 void CSimpleParticleSystemSoA::Update() {		
+	int oldSize = pos.size();
 	for (int i =0; i < pos.size(); ++i) {
 		pos[i]    += speed[i];
 		speed[i]  += gravity[i];
@@ -478,6 +472,7 @@ void CSimpleParticleSystemSoA::Update() {
 	}
 	
 	CheckDead();
+	//LOG("xyz update %i=>%i", oldSize, pos.size());
 	
 	for (int i =0; i < pos.size(); ++i) {
 		size[i] = size[i] * sizeMod[i] + sizeGrowth[i];
@@ -520,6 +515,9 @@ void CSimpleParticleSystemSoA::Erase(int idx) {
 	remove_from_container(idx, airdrag);
 	
 	remove_from_container(idx, visible);
+	remove_from_container(idx, visibleShadow);
+	remove_from_container(idx, visibleReflection);
+	remove_from_container(idx, visibleRefraction);
 	remove_from_container(idx, allyTeam);
 	
 	// draw
@@ -542,10 +540,8 @@ void CSimpleParticleSystemSoA::Erase(int idx) {
 	remove_from_container(idx, castShadow);
 	remove_from_container(idx, alwaysVisible);
 }
-	
-void CSimpleParticleSystemSoA::Draw() {
-	this->UpdateAnimParams();
-	
+
+void CSimpleParticleSystemSoA::PreDraw() {
 	for (int i =0; i < pos.size(); ++i) {
 		colorMap[i]->GetColor(color[i].data(), life[i]);
 	}
@@ -555,56 +551,47 @@ void CSimpleParticleSystemSoA::Draw() {
 		interPos[i] = pos[i] + speed[i] * timeOffset;
 	}
 	
-	// visibility
-	const bool shadowPass = (camera->GetCamType() == CCamera::CAMTYPE_SHADOW);
+	this->UpdateAnimParams();
+	
 	auto spectatingFullView = gu->spectatingFullView;
 	auto myAllyTeam = gu->myAllyTeam;
 	auto& th = teamHandler;
 	auto& lh = losHandler;
 	
+	const CCamera* cameras[] = {
+		CCameraHandler::GetCamera(CCamera::CAMTYPE_PLAYER),
+		CCameraHandler::GetCamera(CCamera::CAMTYPE_UWREFL),
+		CCameraHandler::GetCamera(CCamera::CAMTYPE_SHADOW)
+	};
+	
 	for (int i =0; i < pos.size(); ++i) {
 		visible[i] = 	
-			 (spectatingFullView || (th.IsValidAllyTeam(allyTeam[i]) && 
+			 alwaysVisible[i] || (spectatingFullView || (th.IsValidAllyTeam(allyTeam[i]) && 
 			  th.Ally(allyTeam[i], myAllyTeam) ||
 			(lh->InLos(pos[i], myAllyTeam) || 
 			  lh->InAirLos(pos[i], myAllyTeam))));			
 	}
 	
-	if (!shadowPass && DRAW_REFRACTION) {
-		for (int i =0; i < pos.size(); ++i) {
-			visible[i] = visible[i] && interPos[i].y <= drawRadius[i];
-		}
+	for (int i =0; i < pos.size(); ++i) {
+		visibleRefraction[i] = visible[i] && interPos[i].y <= drawRadius[i] && cameras[0]->InView(interPos[i], drawRadius[i]);
+	}	
+	
+	for (int i =0; i < pos.size(); ++i	) {
+		visibleReflection[i] = visible[i] && cameras[1]->InView(interPos[i], drawRadius[i]);
 	}
+	
+	for (int i =0; i < pos.size(); ++i) {
+		visibleShadow[i] = castShadow[i] && visible[i] && cameras[2]->InView(interPos[i], drawRadius[i]);
+	}
+	
+
+}
+
+void CSimpleParticleSystemSoA::Draw() {
+
 	auto* cam = camera;
-	for (int i =0; i < pos.size(); ++i) {
-		visible[i] = visible[i] && cam->InView(interPos[i], drawRadius[i]);
-	}
-	
-	for (int i =0; i < pos.size(); ++i) {
-		visible[i] = visible[i] || alwaysVisible[i];
-	}
-	
-	if (shadowPass) {
-		for (int i =0; i < pos.size(); ++i) {
-			visible[i] = visible[i] && castShadow[i];
-		}
-	}
-	
-	// bounds
-	/*
-	for (int i =0; i < pos.size(); ++i) {
-		const float3 cameraRight = cam->GetRight() * size[i];
-		const float3 cameraUp    = cam->GetUp()    * size[i];
-		
-		bounds[i] = {
-			-cameraRight - cameraUp,
-			 cameraRight - cameraUp,
-			 cameraRight + cameraUp,
-			-cameraRight + cameraUp
-		};
-	}*/
-	
-	// streflop alternative
+
+	// streflop faster alternative
 	const static auto safeANormalize = [&](const auto& ydir) {	
 		const float sql = ydir.SqLength();
 		if likely(sql > float3::nrm_eps()) {
@@ -616,17 +603,21 @@ void CSimpleParticleSystemSoA::Draw() {
 	auto cpos = cam->GetPos();
 	auto fwd = camera->GetForward();
 	
+	// TODO branchless processing?
 	for (int i =0; i < pos.size(); ++i) {
-		if (!visible[i]) {
+		if (DRAW_REFRACTION && !visibleRefraction[i]) {
+			continue;
+		} else if (DRAW_REFLECTION && !visibleReflection[i]) {
 			continue;
 		}
+		
 		const float3 zdir = safeANormalize(pos[i] - cpos);
 		float3 ydir = zdir.cross(speed[i]);
 		float yDirLen2 = ydir.SqLength();
 		ydir = safeANormalize(ydir);
 		const float3 xdir = ydir.cross(zdir);
 
-		if (!shadowPass && directional[i] && yDirLen2 > 0.001f)
+		if (directional[i] && yDirLen2 > 0.001f)
 		{
 			bounds[i] = {
 				-ydir * size[i] - xdir * size[i],
@@ -652,25 +643,12 @@ void CSimpleParticleSystemSoA::Draw() {
 				float3::rotate<false>(rotVal[i], fwd, bounds[i]);
 			}
 		}
-	}		
-
-	/*
-	// TODO branchless?
+	//}		
 	
-	for (int i =0; i < pos.size(); ++i) {
-		if (!visible[i]) {
-			continue;
-		}
-		if (std::fabs(rotVal[i]) > 0.01f) {
-			float3::rotate<false>(rotVal[i], fwd, bounds[i]);
-		}
-	}
-	*/
-	
-	for (int i =0; i < pos.size(); ++i) {
-		if (!visible[i]) {
-			continue;
-		}
+	//for (int i =0; i < pos.size(); ++i) {
+		//if (!visible[i]) {
+		//	continue;
+		//}
 		AddEffectsQuad(
 			{ interPos[i] + bounds[i][0], texture[i]->xstart, texture[i]->ystart, color[i].data() },
 			{ interPos[i] + bounds[i][1], texture[i]->xend,   texture[i]->ystart, color[i].data() },
@@ -678,13 +656,94 @@ void CSimpleParticleSystemSoA::Draw() {
 			{ interPos[i] + bounds[i][3], texture[i]->xstart, texture[i]->yend,   color[i].data() },
 			anims[i], aprogress[i]
 		);
-		//enqueuedProjectilesDrawOrderData.push_back(std::pair{drawOrder[i], -cam->ProjectedDistance(pos[i])});
+		
+		// add order so we can sort them later
 		uint64_t order (static_cast<uint32_t>(drawOrder[i]) << 31 | static_cast<uint32_t>(-cam->ProjectedDistance(pos[i])));
 		enqueuedProjectilesDrawOrderData.push_back(order);
-		
 	}	
 }
+
+void CSimpleParticleSystemSoA::DrawShadow() {
+	// visibility
+	const bool shadowPass = (camera->GetCamType() == CCamera::CAMTYPE_SHADOW);
+	assert(shadowPass);
 	
+	auto* cam = camera;
+	
+	// streflop alternative
+	const static auto safeANormalize = [&](const auto& ydir) {	
+		const float sql = ydir.SqLength();
+		if likely(sql > float3::nrm_eps()) {
+			return ydir * fastmath::isqrt_nosse(sql);
+		}
+		return ydir;
+	};
+
+	auto cpos = cam->GetPos();
+	auto fwd = camera->GetForward();
+	
+	for (int i =0; i < pos.size(); ++i) {
+		if (!visibleShadow[i]) {
+			continue;
+		}
+		const float3 zdir = safeANormalize(pos[i] - cpos);
+		float3 ydir = zdir.cross(speed[i]);
+		float yDirLen2 = ydir.SqLength();
+		ydir = safeANormalize(ydir);
+		const float3 xdir = ydir.cross(zdir);
+
+		{
+			const float3 cameraRight = camera->GetRight() * size[i];
+			const float3 cameraUp    = camera->GetUp()    * size[i];				
+			bounds[i] = {
+				-cameraRight - cameraUp,
+				 cameraRight - cameraUp,
+				 cameraRight + cameraUp,
+				-cameraRight + cameraUp
+			};
+			if (std::fabs(rotVal[i]) > 0.01f) {
+				float3::rotate<false>(rotVal[i], fwd, bounds[i]);
+			}
+		}
+	//}		
+
+	//for (int i =0; i < pos.size(); ++i) {
+		//if (!visible[i]) {
+		//	continue;
+		//}
+		AddEffectsQuad(
+			{ interPos[i] + bounds[i][0], texture[i]->xstart, texture[i]->ystart, color[i].data() },
+			{ interPos[i] + bounds[i][1], texture[i]->xend,   texture[i]->ystart, color[i].data() },
+			{ interPos[i] + bounds[i][2], texture[i]->xend,   texture[i]->yend,   color[i].data() },
+			{ interPos[i] + bounds[i][3], texture[i]->xstart, texture[i]->yend,   color[i].data() },
+			anims[i], aprogress[i]
+		);
+		
+		// shadow not sorted
+	}	
+}
+
+void AddMiniMapVertices(VA_TYPE_C&& v1, VA_TYPE_C&& v2)
+{
+	auto& mmLnsRB = CProjectile::GetMiniMapLinesRB();
+	auto& mmPtsRB = CProjectile::GetMiniMapPointsRB();
+	if (v1.pos.equals(v2.pos)) {
+		mmPtsRB.AddVertex(std::move(v1));
+	}
+	else {
+		mmLnsRB.AddVertex(std::move(v1));
+		mmLnsRB.AddVertex(std::move(v2));
+	}
+}
+
+void CSimpleParticleSystemSoA::DrawOnMinimap() {
+	for (int i =0; i < pos.size(); ++i)
+	{
+		if (!visible[i])
+			continue;
+		AddMiniMapVertices({ pos[i], color4::whiteA }, { pos[i] + speed[i], color4::whiteA });
+	}
+}
 	
 void CSimpleParticleSystemSoA::UpdateAnimParams() {
 	int gameFrame = gs->frameNum;

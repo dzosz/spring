@@ -156,7 +156,7 @@ SpawnableTuple GetSpawnableEntryImpl<CSimpleParticleSystem>()
 		[](SExpGenSpawnableMemberInfo& memberInfo) { return CSphereParticleSpawner::GetMemberInfo(memberInfo); },
 		[]() { 
 			// singleton SPS spawns multiple particles within this instance
-			static CSphereParticleSpawner* p = projMemPool.alloc<CSphereParticleSpawner>();
+			/*static*/ CSphereParticleSpawner* p = projMemPool.alloc<CSphereParticleSpawner>();
 			return static_cast<CExpGenSpawnable*>(p);
 		}
 	);

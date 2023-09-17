@@ -135,6 +135,7 @@ static void createECSTaskGraph() {
 }
 
 static void createECSGroups() { // for better iteration performance
+	// projectileRegistry.group<const SimpleParticle, const AnimParams2>();
 	/*
 	projectileRegistry.group<Lifetime, const Decayrate>();
 	projectileRegistry.group<Heat, const HeatDecay>();
@@ -620,17 +621,21 @@ void CProjectileHandler::UpdateProjectilesImpl()
 			//return;
 		}
 		
+		// TODO execute in threadpool
+		auto spsSoaFuture = std::async(std::launch::async, [&]() { simpleParticleSystem.Update(); });
+		;
+
 		size_t s = pc.size();
-		for(size_t i =0; i < s; ++i) {
-		//for_mt_chunk(0, pc.size(), [&pc](int i) {	
+		//for(size_t i =0; i < s; ++i) {
+		for_mt_chunk(0, pc.size(), [&pc](int i) {
 			CProjectile* p = pc[i];
 			assert(p != nullptr);
 
 			MAPPOS_SANITY_CHECK(p->pos);
 			p->Update();
 			MAPPOS_SANITY_CHECK(p->pos);
-		}//);
-		//ecs_process_future.wait();
+		});
+		spsSoaFuture.wait();
 	}
 }
 

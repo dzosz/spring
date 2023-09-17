@@ -38,6 +38,7 @@ public:
 	void DrawGroundFlashes();
 	void DrawShadowPassOpaque();
 	void DrawShadowPassTransparent();
+	void SortQuadBufferByDrawOrder();
 
 	void LoadWeaponTextures();
 	void UpdateTextures();
