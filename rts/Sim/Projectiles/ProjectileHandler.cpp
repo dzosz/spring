@@ -621,12 +621,6 @@ void CProjectileHandler::UpdateProjectilesImpl()
 			//return;
 		}
 		
-		// TODO execute in threadpool
-		auto spsSoaFuture = std::async(std::launch::async, [&]() { simpleParticleSystem.Update(); });
-		;
-
-		size_t s = pc.size();
-		//for(size_t i =0; i < s; ++i) {
 		for_mt_chunk(0, pc.size(), [&pc](int i) {
 			CProjectile* p = pc[i];
 			assert(p != nullptr);
@@ -635,7 +629,6 @@ void CProjectileHandler::UpdateProjectilesImpl()
 			p->Update();
 			MAPPOS_SANITY_CHECK(p->pos);
 		});
-		spsSoaFuture.wait();
 	}
 }
 
@@ -756,6 +749,8 @@ void CProjectileHandler::Update()
 				std::stable_sort(fpc.begin(), fpc.end());
 			}
 		}
+		
+		simpleParticleSystem.Update();
 	}
 
 	// precache part of particles count calculation that else becomes very heavy
