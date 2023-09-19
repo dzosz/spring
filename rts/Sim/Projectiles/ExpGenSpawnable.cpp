@@ -41,8 +41,6 @@ using GetMemberInfoFunc = bool(*)(SExpGenSpawnableMemberInfo&);
 using SpawnableTuple = std::tuple<std::string, GetMemberInfoFunc, AllocFunc>;
 
 static std::array<SpawnableTuple, 14> spawnables = {};
-std::vector<uint64_t> enqueuedProjectilesDrawOrderData;
-
 
 CExpGenSpawnable::CExpGenSpawnable(const float3& pos, const float3& spd)
 	: CWorldObject(pos, spd)
@@ -252,12 +250,9 @@ void CExpGenSpawnable::AddEffectsQuad(const VA_TYPE_TC& tl, const VA_TYPE_TC& tr
 		{ br.pos, float3{ br.s, br.t, layer }, uvInfo, animInfo, br.c },
 		{ bl.pos, float3{ bl.s, bl.t, layer }, uvInfo, animInfo, bl.c }
 	);
-	
-	// TODO we don't always have to add the order. e.g. shadows aren't ordered
-	uint64_t order (static_cast<uint32_t>(drawOrder) << 31 | static_cast<uint32_t>(-sortDist));
-	//rb.AddQuadOrder(order);
-	//std::pair order{drawOrder, -sortDist};
-	enqueuedProjectilesDrawOrderData.push_back(order);
-	
 
+	//std::pair order{drawOrder, -sortDist};
+    // TODO drawOrder CAN BE NEGATIVE!?
+	uint64_t order (static_cast<uint32_t>(drawOrder) << 31 | static_cast<uint32_t>(-sortDist));
+	rb.AddQuadOrder(order);
 }

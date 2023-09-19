@@ -63,7 +63,6 @@ CProjectileDrawer* projectileDrawer = nullptr;
 extern entt::registry projectileRegistry; // simple particle system
 extern bool ECS_MODE;
 extern bool isEcsProj(const CProjectile* pro);
-extern std::vector<uint64_t> enqueuedProjectilesDrawOrderData;
 
 // can not be a CProjectileDrawer; destruction in global
 // scope might happen after ~EventHandler (referenced by
@@ -644,7 +643,8 @@ void CProjectileDrawer::DrawProjectileNow(CProjectile* pro, bool drawReflection,
 	if (drawSorted && pro->drawSorted) {
 		int drawOrder = pro->drawOrder;
 		float sortDist = pro->sortDist;
-		sortedProjectiles.emplace_back(std::pair{std::pair{drawOrder, -sortDist}, pro});
+		//sortedProjectiles.emplace_back(std::pair{std::pair{drawOrder, -sortDist}, pro});
+		pro->Draw();
 	} else {
 		unsortedProjectiles.emplace_back(pro);
 	}
@@ -792,6 +792,8 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 
 	projectileRegistry.ctx().emplace<DrawMode>();
 	projectileRegistry.ctx().at<DrawMode>().drawRefraction = drawRefraction;
+	
+	auto& rb = CExpGenSpawnable::GetPrimaryRenderBuffer();
 
 	{
 		{
@@ -807,7 +809,7 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 			unitDrawer->ResetOpaqueDrawing(false);
 		}
 
-		enqueuedProjectilesDrawOrderData.clear(); // clear previous quads IF ANY
+		rb.SetSortMode(drawSorted);
 		
 		// note: model-less projectiles are NOT drawn by this call but
 		// only z-sorted (if the projectiles indicate they want to be)
@@ -836,9 +838,6 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 
 		{
 			ZoneScopedN("Draw::Projectiles::Draw");
-			
-			// rb.EnableSorting()
-			
 			for (auto p : sortedProjectiles) {
 				p.second->Draw();
 			}
@@ -853,11 +852,8 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 		
 		// quads from sorted projectiles are in the buffer.
 		// now apply drawing order onto index buffer
-		if (!drawSorted) // turn on with /DistSortProjectiles
-		{
-			SortQuadBufferByDrawOrder();
-		}
-		enqueuedProjectilesDrawOrderData.clear();	
+		rb.ReorderQuadIndexBuffer();
+		rb.SetSortMode(false);
 
 		for (auto p : unsortedProjectiles) {
 			p->Draw();
@@ -867,7 +863,6 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 	glEnable(GL_BLEND);
 	glDisable(GL_FOG);
 
-	auto& rb = CExpGenSpawnable::GetPrimaryRenderBuffer();
 
 	const bool needSoften = (wantSoften > 0) && !drawReflection && !drawRefraction;
 
@@ -1290,45 +1285,3 @@ void CProjectileDrawer::RenderProjectileDestroyed(const CProjectile* p)
 	modellessProjectiles.pop_back();
 }
 
-// modifies values of array index in render buffer
-// uses prepared vector of std::pair<drawOrder, camDistance> and uses it to apply new order
-// without moving any data
-void CProjectileDrawer::SortQuadBufferByDrawOrder()
-{
-	ZoneScopedN("ProjectileDrawer::SortQuads");
-	
-	auto& rb = CExpGenSpawnable::GetPrimaryRenderBuffer();
-	auto& indcs = rb.GetIndcs();
-	
-	auto numQuads = enqueuedProjectilesDrawOrderData.size();
-	if (indcs.size() < numQuads*6) {
-		// less data than quads, shouldn't happen
-		LOG("%lu %lu ", indcs.size(), numQuads*6);
-		assert(false);
-		throw 3;
-	}	
-	
-	auto arrayBufferIndices = std::span(rb.GetIndcs().end() - numQuads*6, numQuads*6); // get only last added quads
-	
-	static std::vector<uint32_t> newDrawOrderIndices;
-	newDrawOrderIndices.resize(arrayBufferIndices.size()/6); // each quad is 6 indices
-	assert(newDrawOrderIndices.size() <= enqueuedProjectilesDrawOrderData.size());
-	
-	//size_t startIndex = indcs.size() - numQuads*6; // it is possible that render buffer has more quads, but we don't want to sort them
-	size_t startIndex = 0;
-	
-	std::iota(newDrawOrderIndices.begin(), newDrawOrderIndices.end(), startIndex); 
-	std::sort(newDrawOrderIndices.begin(), newDrawOrderIndices.end(), [&](const auto& l, const auto& r) {
-		return enqueuedProjectilesDrawOrderData[l] < enqueuedProjectilesDrawOrderData[r];
-	});
-	
-	uint32_t baseIndex = 0;
-	for (auto& i : newDrawOrderIndices) {
-		// newDrawOrderIndices is now sorted by {drawOrder, -cameraDistance}
-		// apply new order to array buffer
-		for (int j =0; j < 6 ; ++ j) {
-			arrayBufferIndices[baseIndex*6+j] += (i*4) - (baseIndex*4);
-		}
-		++baseIndex;
-	}
-}

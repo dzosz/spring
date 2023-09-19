@@ -54,8 +54,6 @@ To do:
 
 extern entt::registry projectileRegistry;
 
-extern std::vector<uint64_t> enqueuedProjectilesDrawOrderData;
-
 namespace {
 static void AddEffectsQuad(int drawOrder, float sortDist, const VA_TYPE_TC& tl, const VA_TYPE_TC& tr, const VA_TYPE_TC& br, const VA_TYPE_TC& bl, const float3& animInfo)
 {
@@ -83,7 +81,7 @@ static void AddEffectsQuad(int drawOrder, float sortDist, const VA_TYPE_TC& tl, 
 	);
 	
 	uint64_t order (static_cast<uint32_t>(drawOrder) << 31 | static_cast<uint32_t>(-sortDist));
-	enqueuedProjectilesDrawOrderData.push_back(order);
+	//enqueuedProjectilesDrawOrderData.push_back(order);
 }
 
 
