@@ -107,12 +107,13 @@ public:
 	void PreDraw();
 	void DrawOnMinimap();
 	void Add(CSimpleParticleSystem& p, float3 offset); // TODO use thinner CSimpleParticleSystem
-	size_t NumParticles() const { return pos.size(); }
+	size_t NumParticles() const { return d.size(); }
 private:
 	void CheckDead();	
 	void Erase(int idx);	
-	void UpdateAnimParams();
+	void UpdateAnimParams(int idx);
 	
+	/*
 	// update data
 	std::vector<float3> pos;
 	std::vector<float3> speed;
@@ -156,6 +157,55 @@ private:
 	std::vector<float3> anims;
 	std::vector<float> aprogress;
 	std::vector<int> createFrame;
+	*/
+	
+	// update data
+	struct Data {
+		// update data
+		float3 pos;
+		float3 speed;
+	
+		float rotVal;
+		float rotVel;
+		float rotParams; // rotParams.y; //rot accel
+	
+		float life;
+		float decayrate;
+		
+		float size;
+		float sizeGrowth;
+		float sizeMod;
+		
+		float3 gravity;
+		float airdrag;
+		
+		bool visible;
+		bool visibleShadow;
+		bool visibleRefraction;
+		bool visibleReflection;
+		int allyTeam;
+		
+		float drawRadius;
+		int drawOrder;
+		
+		bool directional;
+		
+		// draw data
+		bool castShadow;
+		bool alwaysVisible;
+		
+		CColorMap* colorMap;
+		std::array<unsigned char, 4> color;
+		float3 interPos;
+		
+		std::array<float3, 4> bounds;
+		AtlasedTexture* texture;
+		
+		float3 anims;
+		float aprogress;
+		int createFrame;
+	};
+	std::vector<Data> d;
 };
 
 extern CSimpleParticleSystemSoA simpleParticleSystem;
