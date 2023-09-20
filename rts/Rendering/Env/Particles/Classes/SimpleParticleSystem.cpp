@@ -292,7 +292,7 @@ void CSphereParticleSpawner::Update()
 
 int CSphereParticleSpawner::GetProjectilesCount() const
 {
-	return simpleParticleSystem.NumParticles();
+	return 0;
 }
 
 

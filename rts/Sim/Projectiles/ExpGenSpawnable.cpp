@@ -254,7 +254,7 @@ void CExpGenSpawnable::AddEffectsQuad(const VA_TYPE_TC& tl, const VA_TYPE_TC& tr
     if (rb.GetSortMode()) {
         //std::pair order{drawOrder, -sortDist};
         // TODO drawOrder CAN BE NEGATIVE!?
-        uint64_t order (static_cast<uint32_t>(drawOrder) << 31 | static_cast<uint32_t>(-sortDist));
+        uint64_t order (static_cast<uint64_t>(drawOrder) << 32 | static_cast<uint32_t>(-sortDist));
         rb.AddQuadOrder(order);
     }
 }

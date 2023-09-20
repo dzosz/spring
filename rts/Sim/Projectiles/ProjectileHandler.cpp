@@ -1207,6 +1207,7 @@ int CProjectileHandler::GetCurrentParticles() const
 	}
 	partCount += groundFlashes.size();
 	partCount += projectileRegistry.size();
+	partCount += simpleParticleSystem.NumParticles();
 	return partCount;
 }
 
