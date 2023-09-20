@@ -55,6 +55,27 @@ To do:
 extern entt::registry projectileRegistry;
 
 namespace {
+
+template <typename T>
+void UpdateAnimProgress(T& a)
+{
+	const float t = (projectileRegistry.ctx().at<PhysDelta>().frameNum - a.createFrame +
+					 projectileRegistry.ctx().at<PhysDelta>().timeOffset);
+	if (static_cast<int>(a.params.x) <= 1 && static_cast<int>(a.params.y) <= 1) {
+		a.progress = 0.0f;
+		return;
+	}
+	
+	const float animSpeed = math::fabs(a.params.z);
+	if (a.params.z < 0.0f) {
+		a.progress = 1.0f - math::fabs(math::fmod(t, 2.0f * animSpeed) / animSpeed - 1.0f);
+	}
+	else {
+		a.progress = math::fmod(t, animSpeed) / animSpeed;
+	}
+}
+
+
 static void AddEffectsQuad(int drawOrder, float sortDist, const VA_TYPE_TC& tl, const VA_TYPE_TC& tr, const VA_TYPE_TC& br, const VA_TYPE_TC& bl, const float3& animInfo)
 {
 	float minS = std::numeric_limits<float>::max()   ; float minT = std::numeric_limits<float>::max()   ;
@@ -119,19 +140,11 @@ static bool IsValidTexture(const AtlasedTexture* tex)
 template <typename ViewT>
 static void DrawSimpleParticleSystem(entt::entity ent, ViewT&& view)
 {
-	/*
-	const auto& data = view.template get<const RenderData>(ent);	
-	const auto& drad = view.template get<const DrawRadius>(ent).value;
-	const auto& drawOrder = view.template get<const DrawOrder>(ent).drawOrder;
-	*/
+	auto& d = view.template get<SimpleParticle>(ent);
 
-	const auto& a = view.template get<const AnimParams2>(ent);
-	const auto& d = view.template get<const SimpleParticle>(ent);
-
-		const auto& data = d.r;
-		const auto& drawOrder = d.drawo;
-		const auto& drad = d.drawRadius;
-		
+	const auto& data = d.r;
+	const auto& drawOrder = d.drawo;
+	const auto& drad = d.drawRadius;
 
 	if (!isParticleVisible(d.pos, d.pos, drad, d.allyteam, true)) {
 		return;
@@ -141,7 +154,7 @@ static void DrawSimpleParticleSystem(entt::entity ent, ViewT&& view)
 	data.colorMap->GetColor(color, d.life);
 	
 	const float3 interPos = d.pos;
-	float3 animInfo = { a.params.x, a.params.y, a.progress };
+	float3 animInfo = { d.params.x, d.params.y, d.progress };
 			
 	std::array<float3, 4> bounds;
 	
@@ -198,27 +211,26 @@ template <typename ViewT>
 static void DrawSimpleParticleSystem(ViewT&& view)
 {
 	ZoneScopedN("ECS::DrawSimpleParticleSystem");
-	view.each([&](auto ent, auto...) {
+	view.each([&](auto ent, auto...) {	
 		DrawSimpleParticleSystem(ent, view);
 	});
 }
 
 template <typename ViewT>
 static void DrawCBitmapMuzzleFlame(entt::entity ent, ViewT&& view)
-{
-	
+{	
 	const auto& data = view.template get<const RenderData>(ent);	
 	const auto& drad = view.template get<const DrawRadius>(ent).value;
 	const auto& drawOrder = view.template get<const DrawOrder>(ent).drawOrder;
-	const auto& a = view.template get<const AnimParams2>(ent);
 
-	const auto& d = view.template get<const BitmapMuzzleFlame>(ent);
+	auto& d = view.template get<BitmapMuzzleFlame>(ent);
+	UpdateAnimProgress(d);
 
 	if (!isParticleVisible(d.pos, d.pos, drad, d.allyteam, true)) {
 		return;
 	}	
 	
-	const float t = (projectileRegistry.ctx().at<PhysDelta>().frameNum - a.createFrame +
+	const float t = (projectileRegistry.ctx().at<PhysDelta>().frameNum - d.createFrame +
 								 projectileRegistry.ctx().at<PhysDelta>().timeOffset);
 	// rotParams.y is acceleration in angle per frame^2
 	float rotVel = d.rotParams.x + d.rotParams.y * t;
@@ -264,7 +276,7 @@ static void DrawCBitmapMuzzleFlame(entt::entity ent, ViewT&& view)
 			b = b.rotate<false>(d.rotVal, dir);
 	}
 
-	float3 animInfo = { a.params.x, a.params.y, a.progress };
+	float3 animInfo = { d.params.x, d.params.y, d.progress };
 	
 	auto& sideTexture = data.extraTexture;
 	auto& pos = d.pos;
@@ -340,20 +352,7 @@ template <typename T>
 void UpdateAnimProgressSystem(T&& view)
 {
 	view.each([&](auto ent, auto& a) {
-		const float t = (projectileRegistry.ctx().at<PhysDelta>().frameNum - a.createFrame +
-						 projectileRegistry.ctx().at<PhysDelta>().timeOffset);
-		if (static_cast<int>(a.params.x) <= 1 && static_cast<int>(a.params.y) <= 1) {
-			a.progress = 0.0f;
-			return;
-		}
-		
-		const float animSpeed = math::fabs(a.params.z);
-		if (a.params.z < 0.0f) {
-			a.progress = 1.0f - math::fabs(math::fmod(t, 2.0f * animSpeed) / animSpeed - 1.0f);
-		}
-		else {
-			a.progress = math::fmod(t, animSpeed) / animSpeed;
-		}
+		UpdateAnimProgress(a);
 	});
 }
 
@@ -752,7 +751,8 @@ static void DrawCSmokeTrailProjectile(entt::entity ent, ViewT&& view)
 
 void PreDrawSystem() {
 	ZoneScopedN("ECS::PreDrawSystem");
-	UpdateAnimProgressSystem(projectileRegistry.view<AnimParams2>()); 
+	UpdateAnimProgressSystem(projectileRegistry.view<SimpleParticle>());
+	//UpdateAnimProgressSystem(projectileRegistry.view<AnimParams2>()); 
 	/*
 	UpdateDrawPosSystem(projectileRegistry.view<const Position, DrawPosition>(entt::exclude<Speed>));
 	UpdateDrawPosSpeedSystem(projectileRegistry.view<const Position, const Speed, DrawPosition>());
@@ -819,7 +819,7 @@ static void DispatchDrawingECS(entt::entity ent, ViewT&& view) {
 void DrawSystem()
 {
 	DrawSimpleParticleSystem(
-		projectileRegistry.view<const SimpleParticle, const AnimParams2/*, const DrawOrder,
+		projectileRegistry.view<SimpleParticle/*, const DrawOrder,
 				const DrawRadius, const RenderData*/>()
 	);
 }
@@ -831,6 +831,6 @@ void DrawShadowSystem()
 //	});
 	
 	DrawSimpleParticleSystem(
-		projectileRegistry.view<const CastShadowTag, const SimpleParticle, const AnimParams2>()
+		projectileRegistry.view<const CastShadowTag, SimpleParticle>()
 	);
 }

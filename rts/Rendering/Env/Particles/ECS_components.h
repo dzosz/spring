@@ -92,13 +92,6 @@ struct AnimParams {
 	float3 value;
 };
 
-
-struct AnimParams2 {
-	float progress;
-	float3 params;
-	int createFrame;
-};
-
 struct CreateFrame {
 	int v;
 };
@@ -211,6 +204,10 @@ struct SimpleParticle {
 	float drawRadius;
 	DrawOrder drawo;
 	RenderData r;
+	
+	float progress;
+	float3 params;
+	int createFrame;
 };
 
 struct BitmapMuzzleFlame {
@@ -230,6 +227,10 @@ struct BitmapMuzzleFlame {
 	int allyteam;
 	
 	float decayrate;
+	
+	float progress;
+	float3 params;
+	int createFrame;
 };
 
 // Drawable tags

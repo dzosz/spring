@@ -187,10 +187,10 @@ void CProjectileHandler::AddECSProjectile(CSimpleParticleSystem* proj) {
 			p.life, p.decayrate, p.size,
 			proj->sizeGrowth, proj->sizeMod, proj->allyteamID,
 			proj->drawRadius, DrawOrder{proj->drawOrder, 0.0f},
-			RenderData{proj->texture, nullptr, proj->colorMap, proj->directional}
+			RenderData{proj->texture, nullptr, proj->colorMap, proj->directional},
+			proj->animProgress, proj->animParams, proj->createFrame
+												   
 		);
-		
-		projectileRegistry.emplace<AnimParams2>(ent, proj->animProgress, proj->animParams, proj->createFrame);
 		
 		if (proj->castShadow) {
 			projectileRegistry.emplace<CastShadowTag>(ent);
@@ -222,13 +222,13 @@ void CProjectileHandler::AddECSProjectile(CBitmapMuzzleFlame* p) {
 		p->frontOffset,
 		p->ttl, p->rotVal, p->rotVel,
 		p->rotParams, p->allyteamID,
-		p->invttl);
+		p->invttl,
+		p->animProgress, p->animParams, p->createFrame
+	);
 			
 	projectileRegistry.emplace<DrawRadius>(ent, p->drawRadius);
 	projectileRegistry.emplace<DrawPosition>(ent, p->drawPos);
 	projectileRegistry.emplace<DrawOrder>(ent, p->drawOrder, 0.0f);
-
-	projectileRegistry.emplace<AnimParams2>(ent, p->animProgress, p->animParams, p->createFrame);
 
 	projectileRegistry.emplace<RenderData>(ent, p->frontTexture, p->sideTexture,
 								 p->colorMap, false);
