@@ -465,7 +465,6 @@ void CSimpleParticleSystemSoA::Add(CSimpleParticleSystem& p, float3 offset) {
 }
 	
 void CSimpleParticleSystemSoA::Update() {		
-	int oldSize = d.size();
 	CheckDead();
 		
 	for (int i =0; i < d.size(); ++i) {
@@ -570,7 +569,6 @@ void CSimpleParticleSystemSoA::PreDraw() {
 	for (int i =0; i < d.size(); ++i) {
 		auto& e = d[i];
 		e.colorMap->GetColor(e.color.data(), e.life);
-
 		e.interPos = e.pos + e.speed * timeOffset;
 	
 		this->UpdateAnimParams(i);	

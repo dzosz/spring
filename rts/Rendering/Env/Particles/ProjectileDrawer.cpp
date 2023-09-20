@@ -654,7 +654,7 @@ void CProjectileDrawer::DrawProjectileNow(CProjectile* pro, bool drawReflection,
 
 void CProjectileDrawer::DrawProjectilesShadow(int modelType)
 {
-	SCOPED_TIMER("Draw::Projectiles::Shadow");
+	ZoneScopedN("Draw::Projectiles::Shadow");
 	const auto& mdlRenderer = modelRenderers[modelType];
 	// const auto& projBinKeys = mdlRenderer.GetObjectBinKeys();
 
@@ -696,7 +696,7 @@ void CProjectileDrawer::DrawProjectileShadow(CProjectile* p)
 
 void CProjectileDrawer::DrawProjectilesMiniMap()
 {
-	SCOPED_TIMER("Draw::Projectiles::Minimap");
+	ZoneScopedN("Draw::Projectiles::Minimap");
 	for (int modelType = MODELTYPE_3DO; modelType < MODELTYPE_CNT; modelType++) {
 		const auto& mdlRenderer = modelRenderers[modelType];
 		// const auto& projBinKeys = mdlRenderer.GetObjectBinKeys();
@@ -746,7 +746,7 @@ void CProjectileDrawer::DrawProjectilesMiniMap()
 
 void CProjectileDrawer::DrawFlyingPieces(int modelType) const
 {
-	SCOPED_TIMER("Draw::Projectiles::Flying");
+	ZoneScopedN("Draw::Projectiles::Flying");
 	const FlyingPieceContainer& container = projectileHandler.flyingPieces[modelType];
 
 	if (container.empty())
@@ -814,25 +814,22 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 		// note: model-less projectiles are NOT drawn by this call but
 		// only z-sorted (if the projectiles indicate they want to be)
 		{
-			ZoneScopedN("ProjectileDrawer::IsVisibleAndSort");	
+			ZoneScopedN("Draw::Projectiles::DrawProjectilesSet");	
 		DrawProjectilesSet(modellessProjectiles, drawReflection, drawRefraction);
+		}
 
 
+		/*
 		if (wantDrawOrder)
 			std::sort(sortedProjectiles.begin(), sortedProjectiles.end(), CProjectileDrawOrderSortingPredicate);
 		else
 			std::sort(sortedProjectiles.begin(), sortedProjectiles.end(), CProjectileSortingPredicate);
 		}
+		*/
 
-		if (ECS_MODE)
-		{
-			ZoneScopedN("Draw::World::Projectiles::ECS::PreDraw");
-			PreDrawSystem();
-		} // scoped timer
-		
 		if (ECS_MODE) // NOTE runtime switch works even during pause
 		{
-			ZoneScopedN("Draw::Projectiles::Draw");
+			ZoneScopedN("Draw::Projectiles::DrawSystem");
 			DrawSystem();		
 		}
 
@@ -843,7 +840,6 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 			}
 		}
 		
-		// SPS SOA
 		{
 			ZoneScopedN("Draw::Projectiles::DrawSPS");
 			simpleParticleSystem.Draw();
@@ -939,7 +935,14 @@ void CProjectileDrawer::DrawShadowPassTransparent()
 
 	// draw the model-less projectiles
 	projectileRegistry.ctx().at<PhysDelta>().timeOffset = globalRendering->timeOffset;
-	DrawShadowSystem();
+	
+	if (ECS_MODE)
+	{
+		ZoneScopedN("Draw::World::Projectiles::ECS::PreDraw");
+		PreDrawSystem();
+		DrawShadowSystem();
+	} // scoped timer
+		
 	simpleParticleSystem.PreDraw();
 	simpleParticleSystem.DrawShadow();
 	
