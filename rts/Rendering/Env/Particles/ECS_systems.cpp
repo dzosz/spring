@@ -75,37 +75,6 @@ void UpdateAnimProgress(T& a)
 	}
 }
 
-
-static void AddEffectsQuad(int drawOrder, float sortDist, const VA_TYPE_TC& tl, const VA_TYPE_TC& tr, const VA_TYPE_TC& br, const VA_TYPE_TC& bl, const float3& animInfo)
-{
-	float minS = std::numeric_limits<float>::max()   ; float minT = std::numeric_limits<float>::max()   ;
-	float maxS = std::numeric_limits<float>::lowest(); float maxT = std::numeric_limits<float>::lowest();
-	std::invoke([&](auto&&... arg) {
-		((minS = std::min(minS, arg.s)), ...);
-		((minT = std::min(minT, arg.t)), ...);
-		((maxS = std::max(maxS, arg.s)), ...);
-		((maxT = std::max(maxT, arg.t)), ...);
-	}, tl, tr, br, bl);
-
-	auto& rb = CExpGenSpawnable::GetPrimaryRenderBuffer();
-
-	const auto uvInfo = float4{ minS, minT, maxS - minS, maxT - minT };
-	//const auto animInfo = float3{ animParams.x, animParams.y, animProgress };
-	constexpr float layer = 0.0f; //for future texture arrays
-
-	//pos, uvw, uvmm, col
-	rb.AddQuadTriangles(
-		{ tl.pos, float3{ tl.s, tl.t, layer }, uvInfo, animInfo, tl.c },
-		{ tr.pos, float3{ tr.s, tr.t, layer }, uvInfo, animInfo, tr.c },
-		{ br.pos, float3{ br.s, br.t, layer }, uvInfo, animInfo, br.c },
-		{ bl.pos, float3{ bl.s, bl.t, layer }, uvInfo, animInfo, bl.c }
-	);
-	
-	uint64_t order (static_cast<uint32_t>(drawOrder) << 31 | static_cast<uint32_t>(-sortDist));
-	//enqueuedProjectilesDrawOrderData.push_back(order);
-}
-
-
 static void AddEffectsQuad(const VA_TYPE_TC& tl, const VA_TYPE_TC& tr, const VA_TYPE_TC& br, const VA_TYPE_TC& bl, const float3& animInfo)
 {
 	float minS = std::numeric_limits<float>::max()   ; float minT = std::numeric_limits<float>::max()   ;
@@ -205,6 +174,13 @@ static void DrawSimpleParticleSystem(entt::entity ent, ViewT&& view)
 		{ interPos + bounds[3], data.texture->xstart, data.texture->yend,   color },
 		animInfo
 	);
+	
+	
+	auto& rb = CExpGenSpawnable::GetPrimaryRenderBuffer();
+	if (rb.GetSortMode()) {
+		uint64_t order (static_cast<uint64_t>(d.drawo.drawOrder) << 32 | static_cast<uint32_t>(-d.drawo.distanceFromCamera));
+		rb.AddQuadOrder(order);
+	}
 }
 
 template <typename ViewT>
@@ -281,7 +257,7 @@ static void DrawCBitmapMuzzleFlame(entt::entity ent, ViewT&& view)
 	auto& sideTexture = data.extraTexture;
 	auto& pos = d.pos;
 	if (IsValidTexture(sideTexture)) {
-		AddEffectsQuad(drawOrder, camera->ProjectedDistance(d.pos),
+		AddEffectsQuad(//drawOrder, camera->ProjectedDistance(d.pos),
 			{ pos + bounds[0], sideTexture->xstart, sideTexture->ystart, col },
 			{ pos + bounds[1], sideTexture->xend  , sideTexture->ystart, col },
 			{ pos + bounds[2], sideTexture->xend  , sideTexture->yend  , col },
@@ -289,7 +265,7 @@ static void DrawCBitmapMuzzleFlame(entt::entity ent, ViewT&& view)
 					animInfo
 					
 		);
-		AddEffectsQuad(drawOrder, camera->ProjectedDistance(d.pos),
+		AddEffectsQuad(//drawOrder, camera->ProjectedDistance(d.pos),
 			{ pos + bounds[4], sideTexture->xstart, sideTexture->ystart, col },
 			{ pos + bounds[5], sideTexture->xend  , sideTexture->ystart, col },
 			{ pos + bounds[6], sideTexture->xend  , sideTexture->yend  , col },
@@ -300,7 +276,7 @@ static void DrawCBitmapMuzzleFlame(entt::entity ent, ViewT&& view)
 
 	auto& frontTexture = data.texture;
 	if (IsValidTexture(frontTexture)) {
-		AddEffectsQuad(drawOrder, camera->ProjectedDistance(d.pos), 
+		AddEffectsQuad(//drawOrder, camera->ProjectedDistance(d.pos), 
 			{ fpos + bounds[8 ], frontTexture->xstart, frontTexture->ystart, col },
 			{ fpos + bounds[9 ], frontTexture->xend  , frontTexture->ystart, col },
 			{ fpos + bounds[10], frontTexture->xend  , frontTexture->yend , col },
@@ -339,20 +315,23 @@ void UpdateDrawPosSystem(ViewT&& view)
 	});
 }
 
-void UpdateDrawOrder(entt::view<entt::get_t<const DrawPosition, DrawOrder>> view)
+/*
+void UpdateDrawOrder(entt::view_t<SimpleParticle> view)
 {
 	const CCamera* cam = CCameraHandler::GetActiveCamera();
 	view.each([&](
-		auto ent, const DrawPosition& drawPos, DrawOrder& drawOrder) {
-		drawOrder.distanceFromCamera = -cam->ProjectedDistance(drawPos.value);
+		auto ent, SimpleParticle& sp) {
+		sp.drawo.distanceFromCamera = -cam->ProjectedDistance(sp.pos);
 	});
 }
-
+*/
 template <typename T>
-void UpdateAnimProgressSystem(T&& view)
+void PreUpdateSimpleParticleSystem(T&& view)
 {
-	view.each([&](auto ent, auto& a) {
-		UpdateAnimProgress(a);
+	const CCamera* cam = CCameraHandler::GetActiveCamera();
+	view.each([&](auto ent, auto& sp) {
+		UpdateAnimProgress(sp);
+		sp.drawo.distanceFromCamera = -cam->ProjectedDistance(sp.pos);
 	});
 }
 
@@ -751,7 +730,7 @@ static void DrawCSmokeTrailProjectile(entt::entity ent, ViewT&& view)
 
 void PreDrawSystem() {
 	ZoneScopedN("ECS::PreDrawSystem");
-	UpdateAnimProgressSystem(projectileRegistry.view<SimpleParticle>());
+	PreUpdateSimpleParticleSystem(projectileRegistry.view<SimpleParticle>());
 	//UpdateAnimProgressSystem(projectileRegistry.view<AnimParams2>()); 
 	/*
 	UpdateDrawPosSystem(projectileRegistry.view<const Position, DrawPosition>(entt::exclude<Speed>));
