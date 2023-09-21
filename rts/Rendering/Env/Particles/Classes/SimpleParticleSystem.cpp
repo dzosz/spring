@@ -660,7 +660,7 @@ void CSimpleParticleSystemSoA::Draw() {
 		
 		
 		// add order so we can sort them later
-		uint64_t order (static_cast<uint32_t>(e.drawOrder) << 31 | static_cast<uint32_t>(-cam->ProjectedDistance(e.pos)));
+		uint64_t order (static_cast<uint64_t>(e.drawOrder) << 32 | static_cast<uint32_t>(-cam->ProjectedDistance(e.pos)));
 		AddQuadOrder(order);		
 	}	
 }
