@@ -175,7 +175,7 @@ void CPieceProjectile::Collision(CUnit* unit, CFeature* feature)
 				SMOKE_COLOR,
 				projectileDrawer->smoketrailtex
 			);
-			smokeTrail->ent;
+			ent = smokeTrail->ent;
 			if (ent)
 				smokeTrail = nullptr;
 		}
