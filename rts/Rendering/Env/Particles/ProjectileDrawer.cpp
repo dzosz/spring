@@ -53,6 +53,9 @@ static bool CProjectileSortingPredicate(const std::pair<std::pair<float, float>,
 	return p1.first.second < p2.first.second;
 };
 
+extern std::array<TypedRenderBuffer<VA_TYPE_PROJ>, 10> projRenderBuffers;
+extern thread_local std::vector<VA_TYPE_PROJ> localRb;
+static std::vector<std::vector<VA_TYPE_PROJ>*> localRbs;
 
 CProjectileDrawer* projectileDrawer = nullptr;
 
@@ -335,6 +338,17 @@ void CProjectileDrawer::Init() {
 	}
 	ViewResize();
 	EnableSoften(configHandler->GetInt("SoftParticles"));
+	
+	projectileRegistry.ctx().emplace<DrawMode>();
+	
+	// used for experimental MT drawing approach where all quads 
+	// are stored in thread local vector and only at the end merged into 
+	// render buffer
+	static std::mutex mut;
+	parallel([&]{
+		std::lock_guard m(mut);
+		localRbs.push_back(&localRb);
+	});
 }
 
 void CProjectileDrawer::Kill() {
@@ -640,13 +654,15 @@ void CProjectileDrawer::DrawProjectileNow(CProjectile* pro, bool drawReflection,
 	DrawProjectileModel(pro);
 	
 	pro->SetSortDist(cam->ProjectedDistance(pro->pos));	
-	if (drawSorted && pro->drawSorted) {
-		int drawOrder = pro->drawOrder;
-		float sortDist = pro->sortDist;
-		//sortedProjectiles.emplace_back(std::pair{std::pair{drawOrder, -sortDist}, pro});
-		pro->Draw();
+	if (drawSorted) {
+		if (pro->drawSorted) {
+			sortedProjectiles.emplace_back(std::pair{std::pair{pro->drawOrder, -0}, pro});
+			//pro->Draw();
+		} else {
+			unsortedProjectiles.emplace_back(pro);
+		}
 	} else {
-		unsortedProjectiles.emplace_back(pro);
+		pro->Draw();
 	}
 }
 
@@ -676,6 +692,9 @@ void CProjectileDrawer::DrawProjectileShadow(CProjectile* p)
 {
 	if (CanDrawProjectile(p, p->GetAllyteamID())) {
 		const CCamera* cam = CCameraHandler::GetActiveCamera();
+		if (isEcsProj(p)) { // avoid duplicated drawing when ECS projectiles are ON
+			return;
+		}
 		if (!cam->InView(p->drawPos, p->GetDrawRadius()))
 			return;
 
@@ -717,12 +736,19 @@ void CProjectileDrawer::DrawProjectilesMiniMap()
 		for (CProjectile* p: modellessProjectiles) {
 			if (!CanDrawProjectile(p, p->GetAllyteamID()))
 				continue;
+			if (isEcsProj(p)) { // avoid duplicated drawing when ECS projectiles are ON
+				continue;
+			}
 
 			p->DrawOnMinimap();
 		}
 	}
 	
 	simpleParticleSystem.DrawOnMinimap();
+	
+	if (ECS_MODE) {
+		DrawMinimapSystem();
+	}
 
 	auto& sh = TypedRenderBuffer<VA_TYPE_C>::GetShader();
 
@@ -788,10 +814,8 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 	unsortedProjectiles.clear();
 
 	projectileRegistry.ctx().at<PhysDelta>().timeOffset = globalRendering->timeOffset;
-	projectileRegistry.ctx().at<PhysDelta>().timeOffset = globalRendering->timeOffset;
 
-	projectileRegistry.ctx().emplace<DrawMode>();
-	projectileRegistry.ctx().at<DrawMode>().drawRefraction = drawRefraction;
+	projectileRegistry.ctx().at<DrawMode>().mode = (drawReflection ? 2 : (drawRefraction ? 1 : 0));
 	
 	auto& rb = CExpGenSpawnable::GetPrimaryRenderBuffer();
 
@@ -809,7 +833,7 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 			unitDrawer->ResetOpaqueDrawing(false);
 		}
 
-		rb.SetSortMode(drawSorted);
+		//rb.SetSortMode(drawSorted);
 		
 		// note: model-less projectiles are NOT drawn by this call but
 		// only z-sorted (if the projectiles indicate they want to be)
@@ -818,15 +842,11 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 		DrawProjectilesSet(modellessProjectiles, drawReflection, drawRefraction);
 		}
 
-
-		/*
 		if (wantDrawOrder)
 			std::sort(sortedProjectiles.begin(), sortedProjectiles.end(), CProjectileDrawOrderSortingPredicate);
 		else
 			std::sort(sortedProjectiles.begin(), sortedProjectiles.end(), CProjectileSortingPredicate);
-		}
-		*/
-
+		
 		if (ECS_MODE) // NOTE runtime switch works even during pause
 		{
 			ZoneScopedN("Draw::Projectiles::DrawSystem");
@@ -834,10 +854,25 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 		}
 
 		{
+			
 			ZoneScopedN("Draw::Projectiles::Draw");
 			for (auto p : sortedProjectiles) {
 				p.second->Draw();
 			}
+			
+
+			/*
+			for_mt_chunk(0, sortedProjectiles.size(), [&](int i) {
+				auto& p = sortedProjectiles[i];
+				p.second->Draw();
+			});
+			for (auto& v : localRbs) {
+				for (int i = 0 ; i < v->size(); i += 4) {
+					rb.AddQuadTriangles((*v)[i], (*v)[i+1], (*v)[i+2], (*v)[i+3]);
+				}
+				v->clear();
+			}
+			*/
 		}
 		
 		{
@@ -848,8 +883,8 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 		
 		// quads from sorted projectiles are in the buffer.
 		// now apply drawing order onto index buffer
-		rb.ReorderQuadIndexBuffer();
-		rb.SetSortMode(false);
+		//rb.ReorderQuadIndexBuffer();
+		//rb.SetSortMode(false);
 
 		for (auto p : unsortedProjectiles) {
 			p->Draw();
@@ -862,7 +897,12 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 
 	const bool needSoften = (wantSoften > 0) && !drawReflection && !drawRefraction;
 
-	if (rb.ShouldSubmit()) {
+	bool shouldSubmit = rb.ShouldSubmit();
+	for (auto& rb : projRenderBuffers) {
+		shouldSubmit = shouldSubmit || rb.ShouldSubmit();
+	}
+	
+	if (shouldSubmit) {
 		ZoneScopedN("ProjectileDrawer::RealDraw");		
 		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 		/*
@@ -893,7 +933,12 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 			fxShaders[needSoften]->SetUniform("softenThreshold", CProjectileDrawer::softenThreshold[0]);
 		}
 		
-		rb.DrawElements(GL_TRIANGLES);
+		if (rb.ShouldSubmit())
+			rb.DrawElements(GL_TRIANGLES);
+		for (auto& rb : projRenderBuffers) {
+			if (rb.ShouldSubmit())
+				rb.DrawElements(GL_TRIANGLES);
+		}
 
 		fxShaders[needSoften]->Disable();
 
@@ -935,6 +980,7 @@ void CProjectileDrawer::DrawShadowPassTransparent()
 
 	// draw the model-less projectiles
 	projectileRegistry.ctx().at<PhysDelta>().timeOffset = globalRendering->timeOffset;
+	projectileRegistry.ctx().at<DrawMode>().mode = 3;
 	
 	if (ECS_MODE)
 	{
@@ -947,6 +993,21 @@ void CProjectileDrawer::DrawShadowPassTransparent()
 	simpleParticleSystem.DrawShadow();
 	
 	DrawProjectilesSetShadow(modellessProjectiles);
+	/*
+	{
+		auto& rb = CExpGenSpawnable::GetPrimaryRenderBuffer();
+		for_mt_chunk(0, modellessProjectiles.size(), [&](int i) {
+			auto* p = modellessProjectiles[i];
+			DrawProjectileShadow(p);
+		});
+		for (auto& v : localRbs) {
+			for (int i = 0 ; i < v->size(); i += 4) {
+				rb.AddQuadTriangles((*v)[i], (*v)[i+1], (*v)[i+2], (*v)[i+3]);
+			}
+			v->clear();
+		}
+	}
+	*/
 
 	auto& rb = CExpGenSpawnable::GetPrimaryRenderBuffer();
 	if (!rb.ShouldSubmit())

@@ -21,6 +21,13 @@
 #include "System/TemplateUtils.hpp"
 #include "Sim/Misc/GlobalSynced.h"
 
+std::array<TypedRenderBuffer<VA_TYPE_PROJ>, 10> projRenderBuffers={};
+thread_local std::vector<VA_TYPE_PROJ> localRb;
+
+static TypedRenderBuffer<VA_TYPE_PROJ>& getProjBuf(int idx) {
+	idx = std::clamp(idx, 0, 10);
+	return projRenderBuffers[idx];
+}
 
 CR_BIND_DERIVED_INTERFACE_POOL(CExpGenSpawnable, CWorldObject, projMemPool.allocMem, projMemPool.freeMem)
 CR_REG_METADATA(CExpGenSpawnable, (
@@ -142,7 +149,7 @@ SpawnableTuple GetSpawnableEntryImpl()
 	);
 }
 
-#define SOA_SIMPLE_PARTICLE_SYSTEM
+//#define SOA_SIMPLE_PARTICLE_SYSTEM
 #ifdef SOA_SIMPLE_PARTICLE_SYSTEM
 template<>
 SpawnableTuple GetSpawnableEntryImpl<CSimpleParticleSystem>()
@@ -238,23 +245,39 @@ void CExpGenSpawnable::AddEffectsQuad(const VA_TYPE_TC& tl, const VA_TYPE_TC& tr
 	}, tl, tr, br, bl);
 
 	auto& rb = GetPrimaryRenderBuffer();
+	// auto& rb = getProjBuf(drawOrder);
+	//auto& rb = localRb;
 
 	const auto uvInfo = float4{ minS, minT, maxS - minS, maxT - minT };
 	const auto animInfo = float3{ animParams.x, animParams.y, animProgress };
 	constexpr float layer = 0.0f; //for future texture arrays
 
 	//pos, uvw, uvmm, col
+	{
+		//int idx = std::clamp(drawOrder, 0, 10);
+		
 	rb.AddQuadTriangles(
 		{ tl.pos, float3{ tl.s, tl.t, layer }, uvInfo, animInfo, tl.c },
 		{ tr.pos, float3{ tr.s, tr.t, layer }, uvInfo, animInfo, tr.c },
 		{ br.pos, float3{ br.s, br.t, layer }, uvInfo, animInfo, br.c },
 		{ bl.pos, float3{ bl.s, bl.t, layer }, uvInfo, animInfo, bl.c }
 	);
+	
+	/*
+		rb.push_back({ tl.pos, float3{ tl.s, tl.t, layer }, uvInfo, animInfo, tl.c });
+		rb.push_back({ tr.pos, float3{ tr.s, tr.t, layer }, uvInfo, animInfo, tr.c });
+		rb.push_back({ br.pos, float3{ br.s, br.t, layer }, uvInfo, animInfo, br.c });
+		rb.push_back({ bl.pos, float3{ bl.s, bl.t, layer }, uvInfo, animInfo, bl.c });
+		*/
+		
+	}
 
+	/*
     if (rb.GetSortMode()) {
         //std::pair order{drawOrder, -sortDist};
         // TODO drawOrder CAN BE NEGATIVE!?
-        uint64_t order (static_cast<uint64_t>(drawOrder) << 32 | static_cast<uint32_t>(-sortDist));
+        uint64_t order ((static_cast<uint64_t>(drawOrder) << 32) | static_cast<uint32_t>(-sortDist));
         rb.AddQuadOrder(order);
     }
+	*/
 }

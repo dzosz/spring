@@ -8,92 +8,21 @@
 #include "tracy/Tracy.hpp"
 
 static void DestroyEnt(entt::entity ent, entt::registry& reg) {
-	if (true) {
+	if (false) {
 		reg.emplace_or_replace<Destroyed>(ent);
 	} else {
 		reg.destroy(ent);
 	}
 }
 
-inline void GrowSizeSystem(entt::registry& reg) {
-	reg.group<Sized, const SizeChange>().each([&] (const auto ent, auto& size, const auto& sizeChange) {
-//inline void GrowSizeSystem(entt::view<entt::get_t<Sized, const SizeChange>> view) {
-		size.value = size.value * sizeChange.sizeMod + sizeChange.sizeGrowth;
-	});
-}
-
-inline void UpdateSizeChangeSystem(entt::view<entt::get_t<const SizeModMod, SizeChange>> view) {
-	view.each([&](auto ent, const auto& sizemodmod, auto& sizeChange) {
-		sizeChange.sizeMod *= sizemodmod.v; 
-	});
-}
-
-inline void GrowLengthSystem(entt::view<entt::get_t<Length, const LengthChange>> view) {
-	view.each([&](auto ent, auto& length, const auto& lengthChange) {
-		length.value += lengthChange.v;
-	});
-}
-
-inline void LifetimeSystem(entt::registry& reg) {
-	reg.group<Lifetime, const Decayrate>().each([&] (const auto ent, auto& l, const auto& d) {
-//inline void LifetimeSystem(entt::registry& reg) {
-//	reg.view<Lifetime, const Decayrate>().each([&](const auto ent, auto& l, const auto& d) {
-		l.value += d.value;
-		if (l.value >= 1.0)
-			DestroyEnt(ent, reg);
-	});
-}
-
-inline void LifetimeHeatSystem(entt::registry& reg) {
-	reg.group<Heat, const HeatDecay>().each([&] (const auto ent, auto& h, const auto& r) {
-		h.v -= r.v;
-		if (h.v <= 0.0)
-			DestroyEnt(ent, reg);
-	});
-}
-
-inline void LifetimeAlphaSystem(entt::registry& reg) {
-	reg.group<Alpha, const AlphaDecayrate>().each([&] (auto ent, auto& l, const auto& d) {
-		l.v -= d.v;
-		if (l.v <= 0.0)
-			DestroyEnt(ent, reg);
-	});
-}
-
-inline void LifetimeFlameSystem(entt::registry& reg) {
-	reg.group<LifetimeFlame, const FlameSizeChange>().each([&](const auto ent, auto& l, const auto& change) {
-		l.v++;
-		if (l.v > 4+ change.v * 30)
-			DestroyEnt(ent, reg);
-	});
-}
-
-inline void GrowSmokeSizeSystem(entt::registry& reg) {
-	reg.group<SmokeSized, const SmokeSizeChange>().each([&](auto ent, auto& smokeSize, const auto& c) {
-		smokeSize.v += c.sizeGrowth;
-		smokeSize.v += (c.startSize - smokeSize.v) * 0.2f * (smokeSize.v < c.startSize);
-	});
-}
-
-void LifetimePositionAboveGroundSystem(entt::registry& reg);
-
 inline void DeleteDestroyedSystem(entt::registry& reg) {
 	auto d = reg.view<Destroyed>();
 	reg.destroy(d.begin(), d.end());
 }
 
-//inline void PositionSystem(entt::view<entt::get_t<Position, const Speed>> view) {
-inline void PositionSystem(entt::registry& reg) {
-	reg.group<Position, const Speed>().each([&] (auto ent, auto& p, const auto& s) {
-		p.value += s.value;
-		//s.value += phys.gravity;
-		//s.value *= phys.airdrag;
-	});
-}
-
 inline void UpdateSimpleParticleSystem(entt::registry& reg) {
 	ZoneScopedN("XYZ::UpdateSimpleParticleSystem");
-	reg.view<SimpleParticle>().each([&] (auto ent, auto& p) {
+	reg.view<SimpleParticle>().each([&] (auto ent, SimpleParticle& p) {
 		p.pos    += p.speed;
 		p.speed  += p.gravity;
 		p.speed  *= p.airdrag;
@@ -108,30 +37,57 @@ inline void UpdateSimpleParticleSystem(entt::registry& reg) {
 }
 
 inline void UpdateBitmapMuzzleFlame(entt::registry& reg) {
-	reg.view<BitmapMuzzleFlame>().each([&] (auto ent, auto& p) {
+	ZoneScopedN("XYZ::UpdateBitmapMuzzleFlame");
+	reg.view<BitmapMuzzleFlame>().each([&] (auto ent, BitmapMuzzleFlame& p) {
 		p.ttl--;
-		if (p.ttl <= 0) {
+		if (p.ttl < 0) {
 			DestroyEnt(ent, reg);
 		}
 	});
 }
 
-void WindPositionSystem(entt::view<entt::get_t<const PositionWindChangeTag, Position, const Lifetime>> view);
+inline void UpdateHeatCloudProjectile(entt::registry& reg) {
+	ZoneScopedN("XYZ::UpdateHeatCloudProjectile");
+	reg.view<HeatCloudProjectile>().each([&] (auto ent, HeatCloudProjectile& e) {
+		e.pos += e.speed;
+		e.heat = std::max(e.heat - e.heatFalloff, 0.0f);
+		
+		e.size += e.sizeGrowth;
+		e.sizemod *= e.sizemodmod;
+		
+		if (e.heat <= 0.0) {
+			DestroyEnt(ent, reg);
+		}
+	});
+}
 
-/*
-inline void SpeedParticlePhysSystem(entt::view<entt::get_t<Speed, const ParticlePhys>> view) {
-	view.each([&](const auto ent, auto& s, const auto& phys) {
-		s.value += phys.gravity;
-		s.value *= phys.airdrag;
+inline void UpdateCMuzzleFlame(entt::registry& reg) {
+	ZoneScopedN("XYZ::UpdateCMuzzleFlame");
+	reg.view<MuzzleFlame>().each([&] (auto ent, MuzzleFlame& e) {
+		e.age++;
+		e.pos += e.speed;
+		if (e.age > (4 + e.size * 30)) {
+			DestroyEnt(ent, reg);
+		}
 	});
 }
-*/
-inline void SpeedParticlePhysSystem(entt::registry& reg) {
-	reg.group<const ParticlePhys>(entt::get<Speed>).each([&](const auto ent, const auto& phys, auto& s) {
-		s.value += phys.gravity;
-		s.value *= phys.airdrag;
+
+inline void UpdateExploSpikeProjectile(entt::registry& reg) {
+	ZoneScopedN("XYZ::UpdateExploSpikeProjectile");
+	reg.view<ExploSpikeProjectile>().each([&] (auto ent, ExploSpikeProjectile& e) {
+		e.pos += e.speed;
+		e.length += e.lengthGrowth;
+		e.alpha = std::max(0.0f, e.alpha - e.alphaDecay);
+		
+		if (e.alpha <= 0.0f) {
+			DestroyEnt(ent, reg);
+		}
 	});
 }
+
+void UpdateSmokeProjectile(entt::registry& reg);
+void UpdateDirtProjectile(entt::registry& reg);
+void UpdateSmokeTrailProjectile(entt::registry& reg);
 
 extern entt::registry projectileRegistry;
 inline bool UpdateEndPos(unsigned int entId, float3 p, float3 dir)
@@ -142,10 +98,6 @@ inline bool UpdateEndPos(unsigned int entId, float3 p, float3 dir)
 		return false;
 	}
 	
-	auto& position = view.template get<Position>(ent).value;
-	
-	auto& drawRadius = view.template get<DrawRadius>(ent).value;
-	
 	auto& d = view.template get<SmokeTrail>(ent);
 	
 	d.pos1 = p;
@@ -154,9 +106,9 @@ inline bool UpdateEndPos(unsigned int entId, float3 p, float3 dir)
 	const float dist = d.pos1.distance(d.pos2);
 
 	d.drawSegmented = false;
-	position = (d.pos1 + d.pos2) * 0.5f;
+	d.pos = (d.pos1 + d.pos2) * 0.5f;
 	
-	drawRadius = dist;
+	d.drawRadius = dist;
 	//TODO sortDistOffset = 10.f + dist * 0.5f; // so that missile's engine flame gets rendered above the trail
 
 	if (d.dir1.dot(d.dir2) < 0.98f) {
@@ -169,7 +121,7 @@ inline bool UpdateEndPos(unsigned int entId, float3 p, float3 dir)
 	return true;
 }
 
-class CProjectile;
 void PreDrawSystem();
 void DrawSystem();
+void DrawMinimapSystem();
 void DrawShadowSystem();

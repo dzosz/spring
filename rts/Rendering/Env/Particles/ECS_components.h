@@ -4,152 +4,9 @@
 #include "System/float4.h"
 #include "Sim/Projectiles/ExpGenSpawnableMemberInfo.h"
 
-struct ParticlePhys
-{
-	float3 gravity;
-	float airdrag;
-};
-
-struct Position {
-	float3 value;
-};
-
-struct Direction {
-	float3 value;
-};
-
-struct DrawPosition {
-	float3 value;
-};
-
-struct ParticleIndex {
-	unsigned v;
-};
-
 struct DrawOrder {
 	int drawOrder;
 	float distanceFromCamera; // should be negative as we want to draw far object first
-};
-
-struct DrawRadius {
-	float value;
-};
-
-struct Speed {
-	float4 value;
-};
-
-struct Rotation {
-	float rotVal = 0.0f;
-	float rotVel = 0.0f;
-};
-
-struct RotParams {
-	float3 value;
-};
-
-struct Lifetime {
-	float value;
-};
-
-struct Decayrate {
-	float value;
-};
-
-struct LifetimeFlame {
-	float v;
-};
-
-struct FlameSizeChange {
-	float v;
-};
-
-struct Heat {
-	float v;
-};
-
-struct HeatDecay {
-	float v;
-};
-
-struct MaxHeat {
-	float v;
-};
-
-struct Alpha {
-	float v;
-};
-
-struct AlphaDecayrate {
-	float v;
-};
-
-struct AnimProgress {
-	float value;
-};
-
-struct AnimParams {
-	float3 value;
-};
-
-struct CreateFrame {
-	int v;
-};
-
-struct Sized {
-	float value;
-};
-
-struct SizeChange {
-	float sizeMod;
-	float sizeGrowth;
-};
-
-struct SizeModMod {
-	float v;
-};
-
-struct LifetimeSizeChange {
-	float sizeGrowth;
-};
-
-struct AlliedTeam {
-	int value;
-};
-
-struct PhysDelta {
-	float timeOffset; // globalRendering->timeOffset, time since last frame
-	int frameNum;
-};
-
-struct DrawMode {
-	bool drawRefraction;
-};
-
-struct Length {
-	float value;
-};
-
-struct LengthChange {
-	float v;
-};
-
-struct SmokeSized {
-	float v;
-};
-
-struct SmokeSizeChange {
-	float sizeGrowth;
-	float startSize;
-};
-
-struct Width {
-	float value;
-};
-
-//BitmapMuzzleFlame specific. maybe put it into the tag?
-struct FrontOffset {
-	float value;
 };
 
 
@@ -162,31 +19,61 @@ struct RenderData {
 	bool directional;
 };
 
-struct Color {
-	float3 v;
+struct PhysDelta {
+	float timeOffset; // globalRendering->timeOffset, time since last frame
+	int frameNum;
+};
+
+struct DrawMode {
+	int mode; // 0 normal, 1 refraction, 2 reflection, 3 shadow
 };
 
 struct SmokeTrail {
-	// TODO these things are almost never updated so making god class
-	int lifePeriod;
 	float3 pos1;
 	float3 pos2;
 	float origSize;
 
+	int creationTime;
+	int lifeTime;
+	int lifePeriod;
+	float color;
 	float3 dir1;
 	float3 dir2;
 
+	float3 dirpos1;
+	float3 dirpos2;
 	float3 midpos;
 	float3 middir;
 	bool drawSegmented;
 	bool firstSegment;
 	bool lastSegment;
+	
+	int allyteam;
+	bool castShadow;
+	bool useAirLos;
+	
+	bool visible;
+	bool visibleRefraction;
+	bool visibleReflection;
+	bool visibleShadow;
+	
+	float3 pos;
+	float4 speed;
+	
+	float3 drawPos;
+	float drawRadius;	
+	DrawOrder drawo;
+	RenderData r;
+	
+	float progress;
+	float3 params;
+	int createFrame;
 };
 
 
 struct SimpleParticle {
 	float3 pos;
-	float3 speed;
+	float4 speed;
 	float3 gravity;
 	float airdrag; 
 
@@ -199,8 +86,54 @@ struct SimpleParticle {
 	float size;
 	float sizeGrowth;
 	float sizeMod;
-	int allyteam;
 	
+	int allyteam;
+	bool castShadow;
+	bool useAirLos;
+	
+	float3 drawPos;
+	float drawRadius;
+	DrawOrder drawo;
+	RenderData r;
+	
+	float progress;
+	float3 params;
+	int createFrame;	
+	
+	bool visible;
+	bool visibleRefraction;
+	bool visibleReflection;
+	bool visibleShadow;
+	
+	std::array<unsigned char, 4> color;
+};
+
+struct BitmapMuzzleFlame {
+	float3 pos;
+	float4 speed;
+	float3 dir;
+	
+	float size;
+	float length;
+	float sizeGrowth;
+	float frontOffset;
+	int ttl;
+	float decayrate;
+
+	float rotVal;
+	float rotVel;
+	float3 rotParams;
+
+	int allyteam;
+	bool castShadow;
+	bool useAirLos;
+	
+	bool visible;
+	bool visibleRefraction;
+	bool visibleReflection;
+	bool visibleShadow;
+
+	float3 drawPos;
 	float drawRadius;
 	DrawOrder drawo;
 	RenderData r;
@@ -210,44 +143,169 @@ struct SimpleParticle {
 	int createFrame;
 };
 
-struct BitmapMuzzleFlame {
-	float3 pos;
-	float3 dir;
-	
+struct DirtProjectile {
+	float alpha;
+	float alphaFalloff;
 	float size;
-	float length;
-	float sizeGrowth;
-	float frontOffset;
-	int ttl;
-
-	float rotVal;
-	float rotVel;
-	float3 rotParams;
-
-	int allyteam;
+	float sizeExpansion;
 	
-	float decayrate;
+	float mygravity;
+	float slowdown;
+	float3 color;
+	
+	int allyteam;
+	bool castShadow;
+	bool useAirLos;
+	
+	bool visible;
+	bool visibleRefraction;
+	bool visibleReflection;
+	bool visibleShadow;
+	
+	float3 pos;
+	float4 speed;
+	
+	float3 drawPos;
+	float drawRadius;
+	DrawOrder drawo;
+	RenderData r;
 	
 	float progress;
 	float3 params;
 	int createFrame;
 };
 
-// Drawable tags
-struct SimpleParticleSystemTag {};
-struct CBitmapMuzzleFlameTag {};
-struct CDirtProjectileTag {};
-struct CExploSpikeProjectileTag{};
-struct CHeatCloudProjectileTag{};
-struct CMuzzleFlameTag{};
-struct CSmokeProjectileTag{};
-struct CSmokeTrailProjectileTag{};
+struct HeatCloudProjectile {
+	float heat;
+	float maxheat;
+	float heatFalloff;
 
+	float size;
+
+	float sizeGrowth;
+	float sizemod;
+	float sizemodmod;
+	
+	float3 pos;
+	float4 speed;
+	
+	float rotVal;
+	float rotVel;
+	float3 rotParams;
+	
+	int allyteam;
+	bool castShadow;
+	bool useAirLos;
+	
+	bool visible;
+	bool visibleRefraction;
+	bool visibleReflection;
+	bool visibleShadow;
+		
+	float3 drawPos;
+	float drawRadius;
+	DrawOrder drawo;
+	RenderData r;
+	
+	float progress;
+	float3 params;
+	int createFrame;
+};
+
+struct SmokeProjectile {
+	float color;
+	float age;
+	float ageSpeed;
+	
+	float size;
+	float startSize;
+	float sizeExpansion;
+	
+	float3 pos;
+	float4 speed;
+	
+	int allyteam;
+	bool castShadow;
+	bool useAirLos;
+	
+	bool visible;
+	bool visibleRefraction;
+	bool visibleReflection;
+	bool visibleShadow;
+	
+	float3 drawPos;
+	float drawRadius;
+	DrawOrder drawo;
+	RenderData r;
+	
+	float progress;
+	float3 params;
+	int createFrame;
+};
+
+
+struct MuzzleFlame {
+	float size;
+	int age;
+	int numFlame;
+	int numSmoke;
+	
+	int index;
+	float3 direction;
+	
+	float3 pos;
+	float4 speed;
+	float3 dir;
+	
+	int allyteam;
+	bool castShadow;
+	bool useAirLos;
+	
+	bool visible;
+	bool visibleRefraction;
+	bool visibleReflection;
+	bool visibleShadow;
+	
+	float3 drawPos;
+	float drawRadius;
+	DrawOrder drawo;
+	RenderData r;
+	
+	float progress;
+	float3 params;
+	int createFrame;
+};
+
+struct ExploSpikeProjectile {
+	float length;
+	float width;
+	float alpha;
+	float alphaDecay;
+	float lengthGrowth;
+	float3 color;
+	
+	int allyteam;
+	bool castShadow;
+	bool useAirLos;
+	
+	bool visible;
+	bool visibleRefraction;
+	bool visibleReflection;
+	bool visibleShadow;
+	
+	float3 pos;
+	float4 speed;
+	float3 dir;
+	
+	float3 drawPos;
+	float drawRadius;
+	DrawOrder drawo;
+	RenderData r;
+	
+	float progress;
+	float3 params;
+	int createFrame;
+};
 
 // System behavior Tags
-struct GroundCollisionTag {};
 struct Destroyed {};
-struct PositionWindChangeTag{};
-struct CastShadowTag{};
-struct AirLosTag{};
-struct VisibleTag{};
