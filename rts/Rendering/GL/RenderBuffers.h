@@ -355,8 +355,8 @@ public:
 
 	TypedRenderBuffer()
 		: RenderBuffer()
-		, vertCount0{ 0 }
-		, elemCount0{ 0 }
+		, vertCount0{ 1 }
+		, elemCount0{ 1 }
 		, bufferType{ bufferTypeDefault }
 		, optimizeForStreaming{ true }
 	{}
@@ -1061,7 +1061,7 @@ void TypedRenderBuffer<T>::ReorderQuadIndexBuffer()
 	});
 	
 	// apply new order to array buffer
-	uint32_t baseIndex = indcs.size() - numPoints; // it is possible that render buffer has more quads that we don't want to sort
+	uint32_t baseIndex = 0; // it is possible that render buffer has more quads that we don't want to sort
 	for (auto& i : newDrawOrderIndices) {		
 		for (int j =0; j < 6 ; ++ j) {
 			arrayBufferIndices[baseIndex*6+j] += (i*4) - (baseIndex*4);
