@@ -529,6 +529,7 @@ static void DrawDirtProjectileSystem(entt::registry& reg)
 
 static void DrawExploSpikeProjectile(entt::registry& reg) 
 {
+	ZoneScopedN("XYZ::DrawExploSpikeProjectile");
 	reg.view<ExploSpikeProjectile>().each([&] (auto ent, ExploSpikeProjectile& e) {
 		if (!isVisible(e)) {
 			return;
@@ -787,9 +788,39 @@ static void DrawSmokeTrailProjectile(entt::registry& reg)
 	});
 }
 
+static void DrawBubbleProjectile(entt::registry& reg) 
+{
+	ZoneScopedN("XYZ::DrawSmokeTrailProjectile");
+	
+	reg.view<BubbleProjectile>().each([&] (auto ent, BubbleProjectile& p) {	
+		if (!isVisible(p)) {
+			return;
+		}
+		
+		unsigned char col[4];
+		col[0] = (unsigned char)(255 * p.alpha);
+		col[1] = (unsigned char)(255 * p.alpha);
+		col[2] = (unsigned char)(255 * p.alpha);
+		col[3] = (unsigned char)(255 * p.alpha);
+	
+		const float interSize = p.size + p.sizeExpansion * globalRendering->timeOffset;
+	
+		auto* bt = projectileDrawer->bubbletex;
+		float3 animInfo = { 1.0, 1.0, 0.0 };
+		
+		AddEffectsQuad(
+			{ p.drawPos - camera->GetRight() * interSize - camera->GetUp() * interSize, bt->xstart, bt->ystart, col },
+			{ p.drawPos + camera->GetRight() * interSize - camera->GetUp() * interSize, bt->xend,   bt->ystart, col },
+			{ p.drawPos + camera->GetRight() * interSize + camera->GetUp() * interSize, bt->xend,   bt->yend,   col },
+			{ p.drawPos - camera->GetRight() * interSize + camera->GetUp() * interSize, bt->xstart, bt->yend,   col },
+			animInfo, p.drawo.drawOrder
+		);		
+	});
+}
+
 // TODO is PreDraw really needed? benchmark
 void PreDrawSystem() {
-	ZoneScopedN("ECS::PreDrawSystem");
+	ZoneScopedN("Draw::Projectiles::PreDrawSystem");
 	PreUpdateSimpleParticleSystem(projectileRegistry.view<SimpleParticle>());
 	//PreUpdateVisibilitySystem<SimpleParticle>(projectileRegistry);
 	PreUpdateVisibilitySystem<BitmapMuzzleFlame>(projectileRegistry);
@@ -799,6 +830,7 @@ void PreDrawSystem() {
 	PreUpdateVisibilitySystem<HeatCloudProjectile>(projectileRegistry);
 	PreUpdateVisibilitySystem<SmokeProjectile>(projectileRegistry);
 	PreUpdateVisibilitySystem<SmokeTrail>(projectileRegistry);
+	PreUpdateVisibilitySystem<BubbleProjectile>(projectileRegistry);
 	
 	/*
 	UpdateAnimProgressSystem(projectileRegistry.view<AnimParams2>()); 
@@ -838,6 +870,7 @@ void PreDrawSystem() {
 // unsorted
 void DrawSystem()
 {
+	ZoneScopedN("Draw::Projectiles::DrawSystem");
 	DrawSimpleParticleSystem(
 		projectileRegistry
 	);
@@ -864,10 +897,15 @@ void DrawSystem()
 	DrawExploSpikeProjectile(
 		projectileRegistry
 	);
+	
+	DrawBubbleProjectile(
+		projectileRegistry
+	);
 }
 
 void DrawShadowSystem()
 {
+	ZoneScopedN("Draw::Projectiles::DrawShadowSystem");
 //	projectileRegistry.view<const VisibleTag, const CastShadowTag>().each([&](auto ent) {
 //		DispatchDrawingECS(ent, projectileRegistry);
 //	});
@@ -897,10 +935,15 @@ void DrawShadowSystem()
 	DrawExploSpikeProjectile(
 		projectileRegistry
 	);
+	
+	DrawBubbleProjectile(
+		projectileRegistry
+	);
 }
 
 void DrawMinimapSystem()
 {
+	ZoneScopedN("Draw::Projectiles::DrawMinimapSystem");
 	projectileRegistry.view<SimpleParticle>().each([&](auto ent, auto& elem) {
 		if (CanDrawProjectile(elem.pos, elem.allyteam, elem.useAirLos)) {
 			CProjectile::AddMiniMapVertices({ elem.pos, color4::whiteA }, { elem.pos + elem.speed, color4::whiteA });
@@ -942,6 +985,12 @@ void DrawMinimapSystem()
 	});		
 	
 	projectileRegistry.view<ExploSpikeProjectile>().each([&](auto ent, auto& elem) {
+		if (CanDrawProjectile(elem.pos, elem.allyteam, elem.useAirLos)) {
+			CProjectile::AddMiniMapVertices({ elem.pos, color4::whiteA }, { elem.pos, color4::whiteA });
+		}
+	});	
+	
+	projectileRegistry.view<BubbleProjectile>().each([&](auto ent, auto& elem) {
 		if (CanDrawProjectile(elem.pos, elem.allyteam, elem.useAirLos)) {
 			CProjectile::AddMiniMapVertices({ elem.pos, color4::whiteA }, { elem.pos, color4::whiteA });
 		}

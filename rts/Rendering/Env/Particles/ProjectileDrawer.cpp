@@ -833,6 +833,7 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 			unitDrawer->ResetOpaqueDrawing(false);
 		}
 
+		
 		//rb.SetSortMode(drawSorted);
 		
 		// note: model-less projectiles are NOT drawn by this call but
@@ -849,7 +850,6 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 		
 		if (ECS_MODE) // NOTE runtime switch works even during pause
 		{
-			ZoneScopedN("Draw::Projectiles::DrawSystem");
 			DrawSystem();		
 		}
 
@@ -860,7 +860,6 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 				p.second->Draw();
 			}
 			
-
 			/*
 			for_mt_chunk(0, sortedProjectiles.size(), [&](int i) {
 				auto& p = sortedProjectiles[i];
@@ -874,12 +873,8 @@ void CProjectileDrawer::Draw(bool drawReflection, bool drawRefraction) {
 			}
 			*/
 		}
-		
-		{
-			ZoneScopedN("Draw::Projectiles::DrawSPS");
-			simpleParticleSystem.Draw();
-		}
-		
+
+		simpleParticleSystem.Draw();
 		
 		// quads from sorted projectiles are in the buffer.
 		// now apply drawing order onto index buffer
@@ -984,7 +979,6 @@ void CProjectileDrawer::DrawShadowPassTransparent()
 	
 	if (ECS_MODE)
 	{
-		ZoneScopedN("Draw::World::Projectiles::ECS::PreDraw");
 		PreDrawSystem();
 		DrawShadowSystem();
 	} // scoped timer

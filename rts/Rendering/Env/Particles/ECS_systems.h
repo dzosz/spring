@@ -85,6 +85,32 @@ inline void UpdateExploSpikeProjectile(entt::registry& reg) {
 	});
 }
 
+inline void UpdateBubbleProjectile(entt::registry& reg) {
+	ZoneScopedN("XYZ::UpdateBubbleProjectile");
+	reg.view<BubbleProjectile>().each([&] (auto ent, BubbleProjectile& p) {
+		p.pos += p.speed;
+		--p.ttl;
+		p.size += p.sizeExpansion;
+		
+		if (p.size < p.startSize) {
+			p.size += (p.startSize - p.size) * 0.2f;
+		}
+		p.drawRadius = p.size;
+		
+		if (p.pos.y > (-p.size * 0.7f)) {
+			p.pos.y = -p.size * 0.7f;
+			p.alpha -= 0.03f;
+		}
+		
+		if (p.ttl < 0) {
+			p.alpha -= 0.03f;
+		}
+		if (p.alpha < 0) {
+			DestroyEnt(ent, reg);
+		}
+	});
+}
+
 void UpdateSmokeProjectile(entt::registry& reg);
 void UpdateDirtProjectile(entt::registry& reg);
 void UpdateSmokeTrailProjectile(entt::registry& reg);

@@ -307,5 +307,34 @@ struct ExploSpikeProjectile {
 	int createFrame;
 };
 
+struct BubbleProjectile {	
+	int ttl;
+	float alpha;
+	float size;
+	float startSize;
+	float sizeExpansion;
+	
+	float3 pos;
+	float4 speed;
+	
+	int allyteam;
+	bool castShadow;
+	bool useAirLos;
+	
+	bool visible;
+	bool visibleRefraction;
+	bool visibleReflection;
+	bool visibleShadow;
+	
+	float3 drawPos;
+	float drawRadius;
+	DrawOrder drawo;
+	RenderData r;
+	
+	float progress;
+	float3 params;
+	int createFrame;
+};
+
 // System behavior Tags
 struct Destroyed {};
