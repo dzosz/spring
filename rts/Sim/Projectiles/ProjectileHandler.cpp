@@ -44,6 +44,7 @@
 #include "Rendering/Env/Particles/Classes/MuzzleFlame.h"
 #include "Rendering/Env/Particles/Classes/SmokeProjectile.h"
 #include "Rendering/Env/Particles/Classes/SmokeTrailProjectile.h"
+#include "Rendering/Env/Particles/Classes/BubbleProjectile.h"
 
 #include <typeindex>
 
@@ -84,7 +85,7 @@ static std::vector<CProjectile*> queuedProjectiles;
 static std::unordered_map<std::type_index, std::function<void(CProjectile*)>> ecsSpawner;
 
 bool isEcsProj(const CProjectile* pro) {
-//	if (!dynamic_cast<const CBitmapMuzzleFlame*>(pro)) {
+//	if (dynamic_cast<const CSimpleParticleSystem*>(pro)) {
 //		return true;
 //	}
 	if (!ECS_MODE)
@@ -315,6 +316,23 @@ void CProjectileHandler::AddECSProjectile(CSmokeTrailProjectile* proj)
 	);
 }
 
+void CProjectileHandler::AddECSProjectile(CBubbleProjectile* proj) {
+	auto ent = projectileRegistry.create();
+	projectileRegistry.emplace<BubbleProjectile>(
+				ent,
+				proj->ttl, proj->alpha,
+				proj->size, proj->startSize,
+				proj->sizeExpansion,
+				proj->pos, proj->speed,
+				proj->allyteamID, proj->castShadow, proj->useAirLos,
+				false, false, false, false,
+				proj->drawPos, proj->drawRadius, DrawOrder{proj->drawOrder, 0.0f},
+				RenderData{nullptr, nullptr, nullptr, false},
+				proj->animProgress, proj->animParams, proj->createFrame
+				
+				);
+}
+
 // provides safety to projectiles container.
 // It avoids duplicated iteration over projectiles[synced] containers
 // and gives control when exactly to Update() new particles
@@ -373,16 +391,17 @@ void CProjectileHandler::Init()
  	projectileRegistry.ctx().emplace<PhysDelta>();
 	ConfigNotify({}, {});
 	
+	ecsSpawner[std::type_index(typeid(CSimpleParticleSystem))] = [&](CProjectile* p) {
+		AddECSProjectile(static_cast<CSimpleParticleSystem*>(p));
+	};	
+
+	/*
 	ecsSpawner[std::type_index(typeid(CBitmapMuzzleFlame))] = [&](CProjectile* p) {
 		AddECSProjectile(static_cast<CBitmapMuzzleFlame*>(p));
 	};
 
 	ecsSpawner[std::type_index(typeid(CHeatCloudProjectile))] = [&](CProjectile* p) {
 		AddECSProjectile(static_cast<CHeatCloudProjectile*>(p));
-	};
-	
-	ecsSpawner[std::type_index(typeid(CSimpleParticleSystem))] = [&](CProjectile* p) {
-		AddECSProjectile(static_cast<CSimpleParticleSystem*>(p));
 	};
 
 	ecsSpawner[std::type_index(typeid(CDirtProjectile))] = [&](CProjectile* p) {
@@ -401,10 +420,11 @@ void CProjectileHandler::Init()
 	ecsSpawner[std::type_index(typeid(CSmokeProjectile))] = [&](CProjectile* p) {
 		AddECSProjectile(static_cast<CSmokeProjectile*>(p));
 	};
-	
+	/*
 	ecsSpawner[std::type_index(typeid(CSmokeTrailProjectile))] = [&](CProjectile* p) {
 		AddECSProjectile(static_cast<CSmokeTrailProjectile*>(p));
 	};
+	*/
 
 	createECSGroups();
 	createECSTaskGraph();
@@ -524,7 +544,7 @@ void CProjectileHandler::UpdateProjectilesImpl()
 		auto ecs_process_future = std::async(std::launch::async, updateECSParticles);
 		//auto ecs_process_future = ThreadPool::Enqueue(updateECSParticles);
 		
-		//auto sps_future = std::async(std::launch::async, [&](){ simpleParticleSystem.Update(); });
+		auto sps_future = std::async(std::launch::async, [&](){ simpleParticleSystem.Update(); });
 		
 		//if (ECS_MODE)
 		{
@@ -545,7 +565,7 @@ void CProjectileHandler::UpdateProjectilesImpl()
 				MAPPOS_SANITY_CHECK(p->pos);
 			});
 		}
-		//sps_future.wait();
+		sps_future.wait();
 		ecs_process_future.wait();
 	}
 }
