@@ -35,7 +35,6 @@ set(sources_engine_Rendering
 		"${CMAKE_CURRENT_SOURCE_DIR}/Env/Particles/Classes/DirtProjectile.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Env/Particles/Classes/ExploSpikeProjectile.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Env/Particles/Classes/FlyingPiece.cpp"
-		"${CMAKE_CURRENT_SOURCE_DIR}/Env/Particles/Classes/GenericParticleProjectile.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Env/Particles/Classes/GeoSquareProjectile.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Env/Particles/Classes/GeoThermSmokeProjectile.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Env/Particles/Classes/NanoProjectile.cpp"
@@ -63,9 +62,8 @@ set(sources_engine_Rendering
 		"${CMAKE_CURRENT_SOURCE_DIR}/GL/VBO.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/GL/VAO.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/GL/glExtra.cpp"
+		"${CMAKE_CURRENT_SOURCE_DIR}/GL/State.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/GL/myGL.cpp"
-		"${CMAKE_CURRENT_SOURCE_DIR}/VK/VkInit.cpp"
-		"${CMAKE_CURRENT_SOURCE_DIR}/VK/VkInfo.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/GlobalRendering.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/GroundFlash.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/CommandDrawer.cpp"
@@ -115,6 +113,7 @@ set(sources_engine_Rendering
 		"${CMAKE_CURRENT_SOURCE_DIR}/Textures/NamedTextures.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Textures/S3OTextureHandler.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Textures/TAPalette.cpp"
+		"${CMAKE_CURRENT_SOURCE_DIR}/Textures/TextureFormat.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Textures/TextureAtlas.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Textures/TexturesSet.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Textures/nv_dds.cpp"
@@ -137,5 +136,6 @@ set(sources_engine_Rendering
 		"${CMAKE_CURRENT_SOURCE_DIR}/Fonts/glFont.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Fonts/glFontRenderer.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Fonts/TextWrap.cpp"
+		"${CMAKE_CURRENT_SOURCE_DIR}/Env/Particles/ECS_systems.cpp"
 		PARENT_SCOPE
 	)

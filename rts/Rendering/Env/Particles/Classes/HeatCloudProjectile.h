@@ -9,6 +9,7 @@ struct AtlasedTexture;
 
 class CHeatCloudProjectile : public CProjectile
 {
+	friend class CProjectileHandler;
 	CR_DECLARE_DERIVED(CHeatCloudProjectile)
 public:
 	CHeatCloudProjectile();

@@ -830,7 +830,7 @@ void CCustomExplosionGenerator::ParseExplosionCode(
 			code.append(1, opcode);
 			code.append((char*) &v, ((char*) &v) + sizeof(v));
 		} else {
-			const int v = Clamp(int(strtol(&script[p], &endp, 10)), 0, 16);
+			const int v = std::clamp(int(strtol(&script[p], &endp, 10)), 0, 16);
 
 			p += (endp - &script[p]);
 
@@ -896,6 +896,7 @@ bool CCustomExplosionGenerator::Load(CExplosionGeneratorHandler* handler, const 
 		spawnTable.SubTable("properties").GetMap(props);
 
 		for (const auto& propIt: props) {
+			//LOG("xyz1 %s __ %s", propIt.first.c_str(), propIt.second.c_str());
 			SExpGenSpawnableMemberInfo memberInfo = {0, 0, 0, STRING_HASH(std::move(StringToLower(propIt.first))), SExpGenSpawnableMemberInfo::TYPE_INT, nullptr};
 
 			if (CExpGenSpawnable::GetSpawnableMemberInfo(className, memberInfo)) {
@@ -969,6 +970,8 @@ bool CCustomExplosionGenerator::Explosion(
 	else {
 		assert(Threading::IsMainThread() || Threading::IsGameLoadThread());
 	}
+	
+	static int SPS = CExpGenSpawnable::GetSpawnableID("CSimpleParticleSystem");
 
 	for (int a = 0; a < spawnInfo.size(); a++) {
 		const ProjectileSpawnInfo& psi = spawnInfo[a];
@@ -980,6 +983,16 @@ bool CCustomExplosionGenerator::Explosion(
 		// no new projectiles if we're saturated
 		if (projectileHandler.GetParticleSaturation() > 1.0f)
 			break;
+		
+		if (psi.spawnableID == SPS) {
+			ZoneScopedN("SPS::CEG");
+			for (unsigned int c = 0; c < psi.count; c++) {
+				CExpGenSpawnable* projectile = CExpGenSpawnable::CreateSpawnable(psi.spawnableID);
+				ExecuteExplosionCode(&psi.code[0], damage, (char*) projectile, c, dir);
+				projectile->Init(owner, pos);
+			}
+			continue;
+		}
 
 		for (unsigned int c = 0; c < psi.count; c++) {
 			CExpGenSpawnable* projectile = CExpGenSpawnable::CreateSpawnable(psi.spawnableID);

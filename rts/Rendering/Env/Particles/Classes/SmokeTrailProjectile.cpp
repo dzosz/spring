@@ -12,6 +12,10 @@
 #include "Sim/Misc/GlobalSynced.h"
 #include "System/SpringMath.h"
 
+#include "lib/entt/src/entt/entt.hpp"
+extern entt::registry projectileRegistry;
+extern bool ECS_MODE;
+
 CR_BIND_DERIVED(CSmokeTrailProjectile, CProjectile, )
 
 CR_REG_METADATA(CSmokeTrailProjectile,(
@@ -74,6 +78,13 @@ CSmokeTrailProjectile::CSmokeTrailProjectile(
 	SetRadiusAndHeight(pos1.distance(pos2), 0.0f);
 
 	useAirLos |= ((pos.y - CGround::GetApproximateHeight(pos.x, pos.z)) > 10.0f);
+	
+	if (ECS_MODE)// && isEcsProj(this))
+	{
+		// FIXME come up with a better way for sharing entity id, as UpdateEndPos() is used by non-ecs code
+		ent = entt::to_integral(projectileRegistry.create());
+	}
+	
 }
 
 void CSmokeTrailProjectile::Serialize(creg::ISerializer* s)

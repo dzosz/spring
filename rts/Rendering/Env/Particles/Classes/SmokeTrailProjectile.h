@@ -9,6 +9,7 @@ struct AtlasedTexture;
 
 class CSmokeTrailProjectile : public CProjectile
 {
+	friend class CProjectileHandler;
 	CR_DECLARE_DERIVED(CSmokeTrailProjectile)
 public:
 	CSmokeTrailProjectile() = default;
@@ -36,7 +37,7 @@ public:
 	int GetProjectilesCount() const override;
 
 	void UpdateEndPos(const float3 pos, const float3 dir);
-
+	unsigned int ent=0;
 private:
 	float3 pos1;
 	float3 pos2;

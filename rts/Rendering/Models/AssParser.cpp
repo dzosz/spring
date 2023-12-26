@@ -313,12 +313,22 @@ void CAssParser::Load(S3DModel& model, const std::string& modelFilePath)
 		std::vector<SPseudoAssPiece> meshPseudoPieces(meshNames.size());
 		auto mppIt = meshPseudoPieces.begin();
 		for (const auto& meshName : meshNames) {
+			aiNode* meshNode = nullptr;
+			meshNode = FindNode(scene, scene->mRootNode, meshName);
 			mppIt->name = meshName;
+			if (!meshNode) {
+				LOG_SL(LOG_SECTION_MODEL, L_ERROR, "An assimp model has invalid pieces hierarchy. Missing a mesh named: \"%s\" in model[\"%s\"] path: %s. Looking for a likely candidate", meshName.c_str(), modelName.c_str(), modelPath.c_str());
 
-			const auto* meshNode = FindNode(scene, scene->mRootNode, meshName);
-			assert(meshNode && meshNode->mParent);
+				/* Try to salvage the model since such "invalid" ones can actually be
+				 * produced by industry standard tools (in particular, Blender). */
+				meshNode = FindFallbackNode(scene);
+				if (meshNode && meshNode->mParent)
+					LOG_SL(LOG_SECTION_MODEL, L_WARNING, "Found a likely replacement candidate for mesh \"%s\" - node \"%s\". It might be incorrect!", meshName.c_str(), meshNode->mName.data);
+				else
+					throw content_error("An assimp model has invalid pieces hierarchy. Failed to find suitable replacement.");
+			}
 
-			std::string parentName(meshNode->mParent->mName.C_Str());
+			std::string const parentName(meshNode->mParent->mName.C_Str());
 			auto* parentPiece = model.FindPiece(parentName);
 			assert(parentPiece);
 			mppIt->parent = parentPiece;
@@ -373,14 +383,14 @@ void CAssParser::PreProcessFileBuffer(std::vector<unsigned char>& fileBuffer)
 		return;
 
 	for (size_t i = 0, n = fileBuffer.size(); i < n; ) {
-		matchGroups = std::move(std::cmatch{});
+		matchGroups = std::cmatch{};
 
 		if (!std::regex_search(beg + i, matchGroups, nodePattern))
 			break;
 
-		const std::string   id = std::move(matchGroups[1].str());
-		const std::string name = std::move(matchGroups[2].str());
-		const std::string type = std::move(matchGroups[3].str());
+		const std::string   id = matchGroups[1].str();
+		const std::string name = matchGroups[2].str();
+		const std::string type = matchGroups[3].str();
 
 		assert(matchGroups[0].first  >= beg && matchGroups[0].first  < end);
 		assert(matchGroups[0].second >= beg && matchGroups[0].second < end);
@@ -726,15 +736,26 @@ const std::vector<std::string> CAssParser::GetMeshNames(const aiScene* scene)
 	return meshNames;
 }
 
-const aiNode* CAssParser::FindNode(const aiScene* scene, const aiNode* node, const std::string& name)
+aiNode* CAssParser::FindNode(const aiScene* scene, aiNode* node, const std::string& name)
 {
 	if (std::string(node->mName.C_Str()) == name)
 		return node;
 
 	for (uint32_t ci = 0; ci < node->mNumChildren; ++ci) {
-		const auto* childTargetNode = FindNode(scene, node->mChildren[ci], name);
+		auto* childTargetNode = FindNode(scene, node->mChildren[ci], name);
 		if (childTargetNode)
 			return childTargetNode;
+	}
+
+	return nullptr;
+}
+
+aiNode* CAssParser::FindFallbackNode(const aiScene* scene)
+{
+	for (uint32_t ci = 0; ci < scene->mRootNode->mNumChildren; ++ci) {
+		if (scene->mRootNode->mChildren[ci]->mNumChildren == 0) {
+			return scene->mRootNode->mChildren[ci];
+		}
 	}
 
 	return nullptr;
@@ -1225,7 +1246,7 @@ void CAssParser::BuildPieceHierarchy(S3DModel* model, ModelPieceMap& pieceMap, c
 // Iterate over the model and calculate its overall dimensions
 void CAssParser::CalculateModelDimensions(S3DModel* model, S3DModelPiece* piece)
 {
-	const CMatrix44f scaleRotMat = std::move(piece->ComposeTransform(ZeroVector, ZeroVector, piece->scales));
+	const CMatrix44f scaleRotMat = piece->ComposeTransform(ZeroVector, ZeroVector, piece->scales);
 
 	// cannot set this until parent relations are known, so either here or in BuildPieceHierarchy()
 	piece->goffset = scaleRotMat.Mul(piece->offset) + ((piece->parent != nullptr)? piece->parent->goffset: ZeroVector);

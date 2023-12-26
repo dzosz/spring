@@ -1,6 +1,7 @@
 /* This file is part of the Spring engine (GPL v2 or later), see LICENSE.html */
 
 #include <algorithm>
+#include <sstream>
 
 #include "Projectile.h"
 #include "ProjectileHandler.h"
@@ -31,7 +32,21 @@
 #include "System/SpringMath.h"
 #include "System/TimeProfiler.h"
 #include "System/Threading/ThreadPool.h"
+#include "Rendering/Env/Particles/ProjectileDrawer.h"
 
+#include "lib/entt/src/entt/entt.hpp"
+#include "Rendering/Env/Particles/ECS_systems.h"
+#include "Rendering/Env/Particles/Classes/SimpleParticleSystem.h"
+#include "Rendering/Env/Particles/Classes/BitmapMuzzleFlame.h"
+#include "Rendering/Env/Particles/Classes/DirtProjectile.h"
+#include "Rendering/Env/Particles/Classes/ExploSpikeProjectile.h"
+#include "Rendering/Env/Particles/Classes/HeatCloudProjectile.h"
+#include "Rendering/Env/Particles/Classes/MuzzleFlame.h"
+#include "Rendering/Env/Particles/Classes/SmokeProjectile.h"
+#include "Rendering/Env/Particles/Classes/SmokeTrailProjectile.h"
+#include "Rendering/Env/Particles/Classes/BubbleProjectile.h"
+
+#include <typeindex>
 
 // reserve 5% of maxNanoParticles for important stuff such as capture and reclaim other teams' units
 #define NORMAL_NANO_PRIO 0.95f
@@ -41,6 +56,7 @@
 CONFIG(int, MaxParticles).defaultValue(10000).headlessValue(0).minimumValue(0);
 CONFIG(int, MaxNanoParticles).defaultValue(2000).headlessValue(0).minimumValue(0);
 
+bool ECS_MODE = false; // runtime switch to enable/disable ECS to see graphical differences
 
 CR_BIND(CProjectileHandler, )
 CR_REG_METADATA(CProjectileHandler, (
@@ -63,7 +79,286 @@ ProjMemPool projMemPool;
 
 CProjectileHandler projectileHandler;
 
+entt::registry projectileRegistry;
+static entt::organizer ecsTaskList;
+static std::vector<CProjectile*> queuedProjectiles; 
+static std::unordered_map<std::type_index, std::function<void(CProjectile*)>> ecsSpawner;
 
+bool isEcsProj(const CProjectile* pro) {
+//	if (dynamic_cast<const CSimpleParticleSystem*>(pro)) {
+//		return true;
+//	}
+	if (!ECS_MODE)
+		return false;
+	auto type_idx = std::type_index(typeid(*pro));
+	auto it = ecsSpawner.find(type_idx);
+	return (it != ecsSpawner.end());
+}
+
+namespace {
+
+static void createECSTaskGraph() {
+	ecsTaskList.clear();	
+	ecsTaskList.emplace<&UpdateSimpleParticleSystem>();
+	ecsTaskList.emplace<&UpdateBitmapMuzzleFlame>();
+	ecsTaskList.emplace<&UpdateDirtProjectile>();
+	ecsTaskList.emplace<&UpdateHeatCloudProjectile>();
+	ecsTaskList.emplace<&UpdateSmokeProjectile>();
+	ecsTaskList.emplace<&UpdateSmokeTrailProjectile>();
+	ecsTaskList.emplace<&UpdateCMuzzleFlame>();
+	ecsTaskList.emplace<&UpdateExploSpikeProjectile>();
+	
+	ecsTaskList.emplace<&DeleteDestroyedSystem>();
+	
+	// preallocate pools
+	LOG("ECS Task List:");
+	int idx = 0;
+	for(auto &&node: ecsTaskList.graph()) {
+		node.prepare(projectileRegistry);
+		auto children = node.children();
+		
+		std::ostringstream oss;
+		std::copy(children.begin(), children.end(), std::ostream_iterator<size_t>(oss, " "));
+		LOG("%i %.*s child tasks: %s", idx, static_cast<int>(node.info().name().length()), node.info().name().data(), oss.str().c_str());
+		++idx;
+	}
+}
+
+static void createECSGroups() { // for better iteration performance
+	/*
+	projectileRegistry.group<const SimpleParticle, const AnimParams2>();
+ 	projectileRegistry.group<const ParticlePhys>(entt::get<Speed>);
+ 	projectileRegistry.group<SmokeSized, const SmokeSizeChange>();
+ 	projectileRegistry.group<LifetimeFlame, const FlameSizeChange>();
+	*/
+}
+
+static void updateECSParticles() {
+	// FIXME we can't execute on threadpool until we move all legacy projectiles into ECS
+	ZoneScopedN("XYZ::Sim::Projectiles::Update::ECS");
+	projectileRegistry.ctx().at<PhysDelta>().frameNum = gs->frameNum;
+
+	// execute ecs system updates
+	auto tasks = ecsTaskList.graph();
+	for (auto& vert : tasks) {
+		vert.callback()(vert.data(), projectileRegistry);
+	}
+
+
+	/* // MT EXECUTION
+	{
+		for_mt_chunk(0, tasks.size()-1, [&tasks](int i) {
+			auto& vert = tasks[i];
+			vert.callback()(vert.data(), projectileRegistry);
+		}, 1);
+	}
+	
+	auto vert = tasks.back();
+	vert.callback()(vert.data(), projectileRegistry);
+	*/
+}
+
+} // unnamed namespace
+
+void CProjectileHandler::AddECSProjectile(CSimpleParticleSystem* proj) {
+	//TracyPlot("drawOrdSPS", (float)proj->drawOrder);
+	for (int i=0; i< proj->GetProjectilesCount(); ++i)
+	{
+		auto ent = projectileRegistry.create();
+		auto& p = proj->particles[i];
+		projectileRegistry.emplace<SimpleParticle>(ent,
+			p.pos, p.speed, proj->gravity, proj->airdrag,
+			p.rotVal, p.rotVel, proj->rotParams,
+			p.life, p.decayrate, p.size,
+			proj->sizeGrowth, proj->sizeMod,
+			proj->allyteamID, proj->castShadow, proj->useAirLos,
+			proj->drawPos, proj->drawRadius,
+			DrawOrder{proj->drawOrder, 0.0f},
+			RenderData{proj->texture, nullptr, proj->colorMap, proj->directional},
+			proj->animProgress, proj->animParams, proj->createFrame,		
+			false, false, false, false,
+			std::array<unsigned char, 4>{}	
+		);
+	}
+}
+
+void CProjectileHandler::AddECSProjectile(CBitmapMuzzleFlame* p) {
+	auto ent = projectileRegistry.create();
+	
+	projectileRegistry.emplace<BitmapMuzzleFlame>(ent,
+		p->pos, p->speed, p->dir,
+		p->size,
+		p->length, p->sizeGrowth,
+		p->frontOffset,
+		p->ttl, p->invttl,
+		p->rotVal, p->rotVel, p->rotParams,
+		p->allyteamID, p->castShadow, p->useAirLos,
+		false, false, false, false,
+		p->drawPos, p->drawRadius, DrawOrder{p->drawOrder, 0.0f},
+		RenderData{p->frontTexture, p->sideTexture, p->colorMap, false},
+		p->animProgress, p->animParams, p->createFrame
+	);
+}
+
+void CProjectileHandler::AddECSProjectile(CDirtProjectile* proj) {
+	auto ent = projectileRegistry.create();
+
+	projectileRegistry.emplace<DirtProjectile>(ent,
+	    proj->alpha, proj->alphaFalloff,
+	    proj->size, proj->sizeExpansion,
+	    proj->mygravity, proj->slowdown, proj->color,
+		proj->allyteamID, proj->castShadow, proj->useAirLos,
+		false, false, false, false,							   
+	    proj->pos, proj->speed,
+		proj->drawPos, proj->drawRadius, DrawOrder{proj->drawOrder, 0.0f},
+		RenderData{proj->texture, nullptr, nullptr, false},
+		proj->animProgress, proj->animParams, proj->createFrame
+	);
+}
+
+void CProjectileHandler::AddECSProjectile(CExploSpikeProjectile* p) {
+	auto ent = projectileRegistry.create();
+
+	projectileRegistry.emplace<ExploSpikeProjectile>(
+		ent,
+		p->length, p->width,
+		p->alpha, p->alphaDecay,
+		p->lengthGrowth,
+		p->color, 
+		p->allyteamID, p->castShadow, p->useAirLos,
+		false, false, false, false,
+		p->pos, p->speed, p->dir,
+		p->drawPos, p->drawRadius, DrawOrder{p->drawOrder, 0.0f},
+		RenderData{nullptr, nullptr, nullptr, false},
+		p->animProgress, p->animParams, p->createFrame
+	);
+}
+
+void CProjectileHandler::AddECSProjectile(CHeatCloudProjectile* p)
+{
+	auto ent = projectileRegistry.create();
+	
+	projectileRegistry.emplace<HeatCloudProjectile>(
+		ent,
+		p->heat, p->maxheat, p->heatFalloff,
+		p->size, p->sizeGrowth, p->sizemod, p->sizemodmod,
+		p->pos, p->speed,
+		p->rotVal, p->rotVel, p->rotParams,
+		p->allyteamID, p->castShadow, p->useAirLos,
+		false, false, false, false,
+		p->drawPos, p->drawRadius, DrawOrder{p->drawOrder, 0.0f},
+		RenderData{p->texture, nullptr, nullptr, false},
+		p->animProgress, p->animParams, p->createFrame					   
+	);
+}
+
+
+void CProjectileHandler::AddECSProjectile(CMuzzleFlame* p)
+{
+	auto ent = projectileRegistry.create();
+	for (int i =0; i < p->numSmoke; ++i) {
+		auto texture = projectileDrawer->GetSmokeTexture(i % projectileDrawer->NumSmokeTextures());
+				
+	 	projectileRegistry.emplace<MuzzleFlame>(ent,
+			p->size, p->age,
+			p->numFlame, p->numSmoke,
+			i, p->randSmokeDir[i],
+			p->pos, p->speed, p->dir,
+			p->allyteamID, p->castShadow, p->useAirLos,
+			false, false, false, false,
+			p->drawPos, p->drawRadius, DrawOrder{p->drawOrder, 0.0f},
+			RenderData{texture, nullptr, nullptr, false},
+			p->animProgress, p->animParams, p->createFrame						
+		);
+	}
+}
+
+void CProjectileHandler::AddECSProjectile(CSmokeProjectile* proj)
+{
+	auto ent = projectileRegistry.create();
+
+	projectileRegistry.emplace<SmokeProjectile>(ent,
+		proj->color, proj->age, proj->ageSpeed,
+		proj->size, proj->startSize, proj->sizeExpansion,
+		proj->pos, proj->speed,
+		proj->allyteamID, proj->castShadow, proj->useAirLos,
+		false, false, false, false,
+		proj->drawPos, proj->drawRadius, DrawOrder{proj->drawOrder, 0.0f},
+		RenderData{projectileDrawer->GetSmokeTexture(proj->textureNum), nullptr, nullptr, false},
+		proj->animProgress, proj->animParams, proj->createFrame
+	);
+}
+
+void CProjectileHandler::AddECSProjectile(CSmokeTrailProjectile* proj)
+{
+	//auto ent = projectileRegistry.create();	
+	auto ent = entt::entity(proj->ent); // FIXME temporary workaround required because of UpdateEndPos() external calls
+	
+	if (!projectileRegistry.valid(ent)) {
+		throw 130;
+	}
+	
+	projectileRegistry.emplace<SmokeTrail>(ent,
+		proj->pos1,
+		proj->pos2,
+		proj->origSize,
+		proj->creationTime, proj->lifeTime, proj->lifePeriod,
+		proj->color, proj->dir1, proj->dir2,
+		proj->dirpos1, proj->dirpos2,
+		proj->midpos, proj->middir,	   
+		proj->drawSegmented, proj->firstSegment, proj->lastSegment,
+		proj->allyteamID, proj->castShadow, proj->useAirLos,
+		false, false, false, false,
+		proj->pos, proj->speed,
+		proj->drawPos, proj->drawRadius, DrawOrder{proj->drawOrder, 0.0f},
+		RenderData{proj->texture, nullptr, nullptr, false},
+		proj->animProgress, proj->animParams, proj->createFrame
+	);
+}
+
+void CProjectileHandler::AddECSProjectile(CBubbleProjectile* proj) {
+	auto ent = projectileRegistry.create();
+	projectileRegistry.emplace<BubbleProjectile>(
+				ent,
+				proj->ttl, proj->alpha,
+				proj->size, proj->startSize,
+				proj->sizeExpansion,
+				proj->pos, proj->speed,
+				proj->allyteamID, proj->castShadow, proj->useAirLos,
+				false, false, false, false,
+				proj->drawPos, proj->drawRadius, DrawOrder{proj->drawOrder, 0.0f},
+				RenderData{nullptr, nullptr, nullptr, false},
+				proj->animProgress, proj->animParams, proj->createFrame
+				
+				);
+}
+
+// provides safety to projectiles container.
+// It avoids duplicated iteration over projectiles[synced] containers
+// and gives control when exactly to Update() new particles
+void CProjectileHandler::AddUnsyncedParticleToQueue(CProjectile* proj) {
+	// called from st or multithreaded context, already locks Projectile::mut
+	queuedProjectiles.push_back(proj);
+}
+
+void CProjectileHandler::DrainUnsyncedProjectileQueue() {
+	for (auto* p : queuedProjectiles) {
+		auto type_idx = std::type_index(typeid(*p));
+		auto it = ecsSpawner.find(type_idx);
+		if (ECS_MODE && it != ecsSpawner.end()) {
+			it->second(p); // calls CProjectileHandler::AddECSProjectile(proj)
+			
+			// Comment out lines below so we can pause the game and see same frame with Legacy or ECS projectiles
+			// when ECS_MODE option is changed
+			projMemPool.free(p);
+			continue;
+		}
+		// legacy unsynced projectile path
+		p->id = static_cast<int>(projectiles[false].Add(p));
+		CreateProjectile(p);
+	}
+	queuedProjectiles.clear();
+}
 
 void CProjectileHandler::Init()
 {
@@ -92,6 +387,49 @@ void CProjectileHandler::Init()
 
 	// register ConfigNotify()
 	configHandler->NotifyOnChange(this, {"MaxParticles", "MaxNanoParticles"});
+    
+ 	projectileRegistry.ctx().emplace<PhysDelta>();
+	ConfigNotify({}, {});
+	
+	ecsSpawner[std::type_index(typeid(CSimpleParticleSystem))] = [&](CProjectile* p) {
+		AddECSProjectile(static_cast<CSimpleParticleSystem*>(p));
+	};	
+
+	/*
+	ecsSpawner[std::type_index(typeid(CBitmapMuzzleFlame))] = [&](CProjectile* p) {
+		AddECSProjectile(static_cast<CBitmapMuzzleFlame*>(p));
+	};
+
+	ecsSpawner[std::type_index(typeid(CHeatCloudProjectile))] = [&](CProjectile* p) {
+		AddECSProjectile(static_cast<CHeatCloudProjectile*>(p));
+	};
+
+	ecsSpawner[std::type_index(typeid(CDirtProjectile))] = [&](CProjectile* p) {
+		AddECSProjectile(static_cast<CDirtProjectile*>(p));
+	};
+
+	ecsSpawner[std::type_index(typeid(CMuzzleFlame))] = [&](CProjectile* p) {
+		AddECSProjectile(static_cast<CMuzzleFlame*>(p));
+	};
+	
+	ecsSpawner[std::type_index(typeid(CExploSpikeProjectile))] = [&](CProjectile* p) {
+		AddECSProjectile(static_cast<CExploSpikeProjectile*>(p));
+	};
+	
+
+	ecsSpawner[std::type_index(typeid(CSmokeProjectile))] = [&](CProjectile* p) {
+		AddECSProjectile(static_cast<CSmokeProjectile*>(p));
+	};
+	/*
+	ecsSpawner[std::type_index(typeid(CSmokeTrailProjectile))] = [&](CProjectile* p) {
+		AddECSProjectile(static_cast<CSmokeTrailProjectile*>(p));
+	};
+	*/
+
+	createECSGroups();
+	createECSTaskGraph();
+	
+	TracyPlotConfig("drawOrdSPS", tracy::PlotFormatType::Number, true, false, tracy::Color::Aqua);	
 }
 
 void CProjectileHandler::Kill()
@@ -125,6 +463,7 @@ void CProjectileHandler::Kill()
 			fpc.clear();
 		}
 	}
+ 	projectileRegistry.clear();
 
 	CCollisionHandler::PrintStats();
 }
@@ -134,6 +473,9 @@ void CProjectileHandler::ConfigNotify(const std::string& key, const std::string&
 {
 	maxParticles     = configHandler->GetInt("MaxParticles");
 	maxNanoParticles = configHandler->GetInt("MaxNanoParticles");
+
+	ECS_MODE = maxParticles % 2;
+	LOG("ECS MODE = %b ECS particles %ld alive", ECS_MODE, projectileRegistry.alive());
 
 	projectiles[false].reserve(static_cast<size_t>(maxParticles) * 2);
 }
@@ -198,14 +540,33 @@ void CProjectileHandler::UpdateProjectilesImpl()
 		}
 	}
 	else {
-		for_mt_chunk(0, pc.size(), [&pc](int i) {
-			CProjectile* p = pc[i];
-			assert(p != nullptr);
-
-			MAPPOS_SANITY_CHECK(p->pos);
-			p->Update();
-			MAPPOS_SANITY_CHECK(p->pos);
-		});
+		DrainUnsyncedProjectileQueue();
+		auto ecs_process_future = std::async(std::launch::async, updateECSParticles);
+		//auto ecs_process_future = ThreadPool::Enqueue(updateECSParticles);
+		
+		auto sps_future = std::async(std::launch::async, [&](){ simpleParticleSystem.Update(); });
+		
+		//if (ECS_MODE)
+		{
+			//updateECSParticles();
+			//UpdateECSParticlesMT();
+			//return;
+		}
+		
+		{
+			ZoneScopedN("XYZ::Sim::Projectiles::Update::for_mt_chunk");
+			for_mt_chunk(0, pc.size(), [&pc](int i) {
+			//for (int i =0; i < pc.size(); ++i) {
+				CProjectile* p = pc[i];
+				assert(p != nullptr);
+	
+				MAPPOS_SANITY_CHECK(p->pos);
+				p->Update();
+				MAPPOS_SANITY_CHECK(p->pos);
+			});
+		}
+		sps_future.wait();
+		ecs_process_future.wait();
 	}
 }
 
@@ -325,7 +686,7 @@ void CProjectileHandler::Update()
 			if (resortFlyingPieces[modelType]) {
 				std::stable_sort(fpc.begin(), fpc.end());
 			}
-		}
+		}		
 	}
 
 	// precache part of particles count calculation that else becomes very heavy
@@ -340,6 +701,39 @@ void CProjectileHandler::Update()
 
 	frameProjectileCounts[ true] = projectiles[ true].size();
 	frameProjectileCounts[false] = projectiles[false].size();
+
+	// prints currently allocated projectiles every second
+    /*
+	if (gs->frameNum % 30 == 0) {
+		std::map<std::type_index, std::pair<std::string, size_t>> unsynced;
+		std::map<std::type_index, std::pair<std::string,size_t>> synced;
+				
+		for (const CProjectile* p: projectiles[ true]) {
+			frameCurrentParticles += p->GetProjectilesCount();
+			auto id = std::type_index(typeid(*p));
+			if (synced.find(typeid(*p)) == synced.end()) {
+				synced.insert(std::pair{id, std::pair{typeid(*p).name(), 0}});
+			}
+			synced.at(id).second += 1;
+		}
+				
+		for (const CProjectile* p: projectiles[false]) {
+			auto id = std::type_index(typeid(*p));
+			if (unsynced.find(typeid(*p)) == unsynced.end()) {
+				unsynced.insert(std::pair{id, std::pair{typeid(*p).name(), 0}});
+			}
+			unsynced.at(id).second += 1;
+		}
+		
+		
+		for (auto& t : unsynced) {
+			LOG("u %s %lu", t.second.first.c_str(), t.second.second);
+		}
+		for (auto& t : synced) {
+			LOG("s %s %lu", t.second.first.c_str(), t.second.second);
+		}
+	}
+	*/
 }
 
 void CProjectileHandler::AddProjectile(CProjectile* p)
@@ -347,6 +741,11 @@ void CProjectileHandler::AddProjectile(CProjectile* p)
 	// already initialized?
 	assert(p->id < 0);
 	assert(p->createMe);
+
+	if (!p->synced) {
+		AddUnsyncedParticleToQueue(p);
+		return;
+	}
 
 	if (p->synced)
 		p->id = static_cast<int>(projectiles[true ].Add(p, rngFuncs[true]));
@@ -743,6 +1142,8 @@ int CProjectileHandler::GetCurrentParticles() const
 		}
 	}
 	partCount += groundFlashes.size();
+	partCount += projectileRegistry.size();
+	partCount += simpleParticleSystem.NumParticles();
 	return partCount;
 }
 

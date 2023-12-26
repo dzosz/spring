@@ -2,9 +2,12 @@
 
 #include "SimpleParticleSystem.h"
 
-#include "GenericParticleProjectile.h"
 #include "Game/Camera.h"
 #include "Game/GlobalUnsynced.h"
+#include "Sim/Misc/GlobalSynced.h"
+#include "Sim/Misc/TeamHandler.h"
+#include "Sim/Misc/LosHandler.h"
+#include "Sim/Units/Unit.h"
 #include "Rendering/GlobalRendering.h"
 #include "Rendering/Env/Particles/ProjectileDrawer.h"
 #include "Rendering/GL/RenderBuffers.h"
@@ -15,6 +18,51 @@
 #include "System/float3.h"
 #include "System/Log/ILog.h"
 #include "System/SpringMath.h"
+#include "Rendering/Colors.h"
+#include "Game/CameraHandler.h"
+
+#include "System/BranchPrediction.h"
+
+
+CSimpleParticleSystemSoA simpleParticleSystem; 
+extern bool DRAW_REFLECTION;
+extern bool DRAW_REFRACTION;
+
+void AddEffectsQuad(const VA_TYPE_TC& tl, const VA_TYPE_TC& tr, const VA_TYPE_TC& br, const VA_TYPE_TC& bl,
+					const float3& animParams, const float& animProgress)
+{
+	float minS = std::numeric_limits<float>::max()   ; float minT = std::numeric_limits<float>::max()   ;
+	float maxS = std::numeric_limits<float>::lowest(); float maxT = std::numeric_limits<float>::lowest();
+	std::invoke([&](auto&&... arg) {
+		((minS = std::min(minS, arg.s)), ...);
+		((minT = std::min(minT, arg.t)), ...);
+		((maxS = std::max(maxS, arg.s)), ...);
+		((maxT = std::max(maxT, arg.t)), ...);
+	}, tl, tr, br, bl);
+
+	
+	auto& rb = CProjectile::GetPrimaryRenderBuffer();
+
+	const auto uvInfo = float4{ minS, minT, maxS - minS, maxT - minT };
+	const auto animInfo = float3{ animParams.x, animParams.y, animProgress };
+	constexpr float layer = 0.0f; //for future texture arrays
+
+	//pos, uvw, uvmm, col
+	rb.AddQuadTriangles(
+		{ tl.pos, float3{ tl.s, tl.t, layer }, uvInfo, animInfo, tl.c },
+		{ tr.pos, float3{ tr.s, tr.t, layer }, uvInfo, animInfo, tr.c },
+		{ br.pos, float3{ br.s, br.t, layer }, uvInfo, animInfo, br.c },
+		{ bl.pos, float3{ bl.s, bl.t, layer }, uvInfo, animInfo, bl.c }
+	);
+}
+
+void AddQuadOrder(uint64_t order)
+{
+	auto& rb = CProjectile::GetPrimaryRenderBuffer();
+	if (rb.GetSortMode()) {
+		rb.AddQuadOrder(order);
+	}
+}
 
 CR_BIND_DERIVED(CSimpleParticleSystem, CProjectile, )
 
@@ -98,7 +146,35 @@ void CSimpleParticleSystem::Draw()
 {
 	UpdateAnimParams();
 
-	std::array<float3, 4> bounds;
+	float3 zdir;
+	float3 ydir;
+	float3 xdir;
+
+	const auto DoParticleDraw = [this](const float3& xdir, const float3& ydir, const float3& zdir, const Particle* p) {
+		const float3 pDrawPos = p->pos + p->speed * globalRendering->timeOffset;
+		const float size = p->size;
+
+		unsigned char color[4];
+		colorMap->GetColor(color, p->life);
+
+		std::array<float3, 4> bounds = {
+			-ydir * size - xdir * size,
+			-ydir * size + xdir * size,
+			 ydir * size + xdir * size,
+			 ydir * size - xdir * size
+		};
+
+		if (std::fabs(p->rotVal) > 0.01f) {
+			float3::rotate<false>(p->rotVal, zdir, bounds);
+		}
+		AddEffectsQuad(
+			{ pDrawPos + bounds[0], texture->xstart, texture->ystart, color },
+			{ pDrawPos + bounds[1], texture->xend,   texture->ystart, color },
+			{ pDrawPos + bounds[2], texture->xend,   texture->yend,   color },
+			{ pDrawPos + bounds[3], texture->xstart, texture->yend,   color }
+		);
+	};
+
 	const bool shadowPass = (camera->GetCamType() == CCamera::CAMTYPE_SHADOW);
 	if (directional && !shadowPass) {
 		for (int i = 0; i < numParticles; i++) {
@@ -107,50 +183,19 @@ void CSimpleParticleSystem::Draw()
 			if (p->life >= 1.0f)
 				continue;
 
-			const float3 zdir = (p->pos - camera->GetPos()).SafeANormalize();
-			      float3 ydir = zdir.cross(p->speed); float yDirLen2 = ydir.SqLength(); ydir.SafeANormalize();
-			const float3 xdir = ydir.cross(zdir);
-
-			const float3 interPos = p->pos + p->speed * globalRendering->timeOffset;
-			const float size = p->size;
-
-			unsigned char color[4];
-			colorMap->GetColor(color, p->life);
-
-			const float3* fwdDir = &zdir;
-
-			if (yDirLen2 > 0.001f) {
-				bounds = {
-					-ydir * size - xdir * size,
-					-ydir * size + xdir * size,
-					 ydir * size + xdir * size,
-					 ydir * size - xdir * size
-				};
-			} else {
-				// in this case the particle's coor-system is degenerate
-				const float3 cameraRight = camera->GetRight() * p->size;
-				const float3 cameraUp    = camera->GetUp()    * p->size;
-				fwdDir = &camera->GetForward();
-
-				bounds = {
-					-cameraRight - cameraUp,
-					 cameraRight - cameraUp,
-					 cameraRight + cameraUp,
-					-cameraRight + cameraUp
-				};
+			zdir = (p->pos - camera->GetPos()).SafeANormalize();
+			ydir = zdir.cross(p->speed);
+			if likely(ydir.SqLength() > 0.001f) {
+				ydir.SafeANormalize();
+				xdir = ydir.cross(zdir);
+			}
+			else {
+				zdir = camera->GetForward();
+				xdir = camera->GetRight();
+				ydir = camera->GetUp();
 			}
 
-
-			if (math::fabs(p->rotVal) > 0.01f) {
-				for (auto& b : bounds)
-					b = b.rotate(p->rotVal, *fwdDir);
-			}
-			AddEffectsQuad(
-				{ interPos + bounds[0], texture->xstart, texture->ystart, color },
-				{ interPos + bounds[1], texture->xend,   texture->ystart, color },
-				{ interPos + bounds[2], texture->xend,   texture->yend,   color },
-				{ interPos + bounds[3], texture->xstart, texture->yend,   color }
-			);
+			DoParticleDraw(xdir, ydir, zdir, p);
 		}
 		return;
 	}
@@ -162,39 +207,20 @@ void CSimpleParticleSystem::Draw()
 		if (p->life >= 1.0f)
 			continue;
 
-		unsigned char color[4];
-		colorMap->GetColor(color, p->life);
-
-		const float3 interPos = p->pos + p->speed * globalRendering->timeOffset;
-		const float3 cameraRight = camera->GetRight() * p->size;
-		const float3 cameraUp    = camera->GetUp()    * p->size;
-
-		bounds = {
-			-cameraRight - cameraUp,
-			 cameraRight - cameraUp,
-			 cameraRight + cameraUp,
-			-cameraRight + cameraUp
-		};
-
-		if (math::fabs(p->rotVal) > 0.01f) {
-			for (auto& b : bounds)
-				b = b.rotate(p->rotVal, camera->GetForward());
-		}
-		AddEffectsQuad(
-			{ interPos + bounds[0], texture->xstart, texture->ystart, color },
-			{ interPos + bounds[1], texture->xend,   texture->ystart, color },
-			{ interPos + bounds[2], texture->xend,   texture->yend,   color },
-			{ interPos + bounds[3], texture->xstart, texture->yend,   color }
-		);
+		zdir = camera->GetForward();
+		xdir = camera->GetRight();
+		ydir = camera->GetUp();
+		
+		DoParticleDraw(xdir, ydir, zdir, p);
 	}
 }
 
 void CSimpleParticleSystem::Update()
 {
 	deleteMe = true;
-
 	for (auto& p: particles) {
 		if (p.life < 1.0f) {
+			
 			p.pos    += p.speed;
 			p.speed  += gravity;
 			p.speed  *= airdrag;
@@ -209,9 +235,9 @@ void CSimpleParticleSystem::Update()
 }
 
 void CSimpleParticleSystem::Init(const CUnit* owner, const float3& offset)
-{
+{	
 	CProjectile::Init(owner, offset);
-
+	
 	const float3 up = emitVector;
 	const float3 right = up.cross(float3(up.y, up.z, -up.x));
 	const float3 forward = up.cross(right);
@@ -219,11 +245,11 @@ void CSimpleParticleSystem::Init(const CUnit* owner, const float3& offset)
 	// FIXME: should catch these earlier and for more projectile-types
 	if (colorMap == nullptr) {
 		colorMap = CColorMap::LoadFromFloatVector(std::vector<float>(8, 1.0f));
-		LOG_L(L_WARNING, "[CSimpleParticleSystem::%s] no color-map specified", __FUNCTION__);
+		LOG_L(L_WARNING, "[CSimpleParticleSystem::%s] no color-map specified", __func__);
 	}
 	if (texture == nullptr) {
 		texture = &projectileDrawer->textureAtlas->GetTexture("simpleparticle");
-		LOG_L(L_WARNING, "[CSimpleParticleSystem::%s] no texture specified", __FUNCTION__);
+		LOG_L(L_WARNING, "[CSimpleParticleSystem::%s] no texture specified", __func__);
 	}
 
 	particles.resize(numParticles);
@@ -248,6 +274,26 @@ int CSimpleParticleSystem::GetProjectilesCount() const
 	return numParticles;
 }
 
+void CSphereParticleSpawner::Draw()
+{
+	/*
+	ZoneScopedN("SPS::Draw");	
+	simpleParticleSystem.Draw();
+	*/
+}
+
+void CSphereParticleSpawner::Update()
+{
+	/*
+	ZoneScopedN("SPS::Update");	
+	simpleParticleSystem.Update();
+	*/
+}
+
+int CSphereParticleSpawner::GetProjectilesCount() const
+{
+	return 0;
+}
 
 
 bool CSimpleParticleSystem::GetMemberInfo(SExpGenSpawnableMemberInfo& memberInfo)
@@ -284,10 +330,10 @@ CR_REG_METADATA(CSphereParticleSpawner, )
 
 void CSphereParticleSpawner::Init(const CUnit* owner, const float3& offset)
 {
-	const float3 up = emitVector;
-	const float3 right = up.cross(float3(up.y, up.z, -up.x));
-	const float3 forward = up.cross(right);
-
+	deleteMe = true;
+	// LOG("xyz CSphereParticleSpawner::Init %i %p", initialized, this);
+	CProjectile::Init(owner, offset);
+	
 	// FIXME: should catch these earlier and for more projectile-types
 	if (colorMap == nullptr) {
 		colorMap = CColorMap::LoadFromFloatVector(std::vector<float>(8, 1.0f));
@@ -297,36 +343,432 @@ void CSphereParticleSpawner::Init(const CUnit* owner, const float3& offset)
 		texture = &projectileDrawer->textureAtlas->GetTexture("sphereparticle");
 		LOG_L(L_WARNING, "[CSphereParticleSpawner::%s] no texture specified", __FUNCTION__);
 	}
-
-	for (int i = 0; i < numParticles; i++) {
-		const float az = guRNG.NextFloat() * math::TWOPI;
-		const float ay = (emitRot + emitRotSpread*guRNG.NextFloat()) * math::DEG_TO_RAD;
-
-		const float3 pspeed = ((up * emitMul.y) * std::cos(ay) - ((right * emitMul.x) * std::cos(az) - (forward * emitMul.z) * std::sin(az)) * std::sin(ay)) * (particleSpeed + (guRNG.NextFloat() * particleSpeedSpread));
-
-		CGenericParticleProjectile* particle = projMemPool.alloc<CGenericParticleProjectile>(owner, pos + offset, pspeed);
-
-		particle->decayrate = 1.0f / (particleLife + guRNG.NextFloat() * particleLifeSpread);
-		particle->life = 0;
-		particle->size = particleSize + guRNG.NextFloat() * particleSizeSpread;
-
-		particle->texture = texture;
-		particle->colorMap = colorMap;
-
-		particle->airdrag = airdrag;
-		particle->sizeGrowth = sizeGrowth;
-		particle->sizeMod = sizeMod;
-
-		particle->gravity = gravity;
-		particle->directional = directional;
-
-		particle->SetRadiusAndHeight(particle->size + sizeGrowth * particleLife, 0.0f);
-	}
-
-	deleteMe = true;
+	
+	drawRadius = (particleSpeed + particleSpeedSpread) * (particleLife * particleLifeSpread);
+	
+	this->GenerateParticles(offset);
+	//this->Clear();
 }
 
 bool CSphereParticleSpawner::GetMemberInfo(SExpGenSpawnableMemberInfo& memberInfo)
 {
 	return CSimpleParticleSystem::GetMemberInfo(memberInfo);
+}
+
+CSphereParticleSpawner::CSphereParticleSpawner()
+{
+	checkCol = false;
+	useAirLos = true;
+	alwaysVisible = true;
+}
+
+void CSphereParticleSpawner::GenerateParticles(const float3& pos)
+{
+	simpleParticleSystem.Add(*this, pos);
+}
+
+void CSphereParticleSpawner::Clear()
+{
+	//*this = CSphereParticleSpawner(); // TODO why it doesn't work?
+	//return;
+
+	// ensure this object is always visible
+	speed = float4{};
+	SetPosition(camera->GetPos());
+	SetVelocityAndSpeed({});
+	allyteamID = gu->myAllyTeam;
+	
+	drawRadius = 9999999;
+	alwaysVisible = true;
+
+	rotParams = float3{ 0.0f, 0.0f, 0.0f };
+	rotVal = {};
+	rotVel = {};
+
+	emitVector = ZeroVector;
+	emitMul = {1.0f, 1.0f, 1.0};
+	gravity = ZeroVector;
+	particleSpeed=(0.0f);
+	particleSpeedSpread=(0.0f);
+	emitRot=(0.0f);
+	emitRotSpread=(0.0f);
+	texture=(nullptr);
+	colorMap=(nullptr);
+	directional=(false);
+	particleLife=(0.0f);
+	particleLifeSpread=(0.0f);
+	particleSize=(0.0f);
+	particleSizeSpread=(0.0f);
+	airdrag=(0.0f);
+	sizeGrowth=(0.0f);
+	sizeMod=(0.0f);
+	numParticles=(0);
+	animParams = { 1.0f, 1.0f, 30.0f };
+	animProgress = 0.0f;
+}
+
+void CSimpleParticleSystemSoA::Add(CSimpleParticleSystem& p, float3 offset) {
+	//LOG("xyz add %i %i %f %f %f", pos.size(), p.numParticles, p.particleLife, p.sizeGrowth, p.particleLife);
+	const float3 up = p.emitVector;
+	const float3 right = up.cross(float3(up.y, up.z, -up.x));
+	const float3 forward = up.cross(right);
+	
+	for (int i = 0 ; i < p.numParticles; ++i) {
+		float az = guRNG.NextFloat() * math::TWOPI;
+		float ay = (p.emitRot + (p.emitRotSpread * guRNG.NextFloat())) * math::DEG_TO_RAD;
+		
+		auto& e = d.emplace_back();
+
+		e.pos = offset;
+		e.speed =((up * p.emitMul.y) * fastmath::cos(ay) - ((right * p.emitMul.x) * fastmath::cos(az) - (forward * p.emitMul.z) * fastmath::sin(az)) * fastmath::sin(ay)) * (p.particleSpeed + (guRNG.NextFloat() * p.particleSpeedSpread));
+		
+		e.rotVal = (p.rotParams.z);
+		e.rotVel = (p.rotParams.x); //initial rotation velocity
+		e.rotParams = (p.rotParams.y);
+		
+		e.life=(0.0f);
+		e.decayrate=(1.0f / (p.particleLife + (guRNG.NextFloat() * p.particleLifeSpread)));
+		
+		e.size=(p.particleSize + guRNG.NextFloat()*p.particleSizeSpread);
+		e.sizeGrowth=(p.sizeGrowth);
+		e.sizeMod=(p.sizeMod);
+		
+		e.gravity=(p.gravity);
+		e.airdrag=(p.airdrag);
+		
+		e.visible=(true);
+		e.visibleShadow=(true);
+		e.visibleRefraction=(true);
+		e.visibleReflection=(true);
+		e.allyTeam=(p.allyteamID);
+					
+		// draw
+		e.colorMap=(p.colorMap);
+		
+		//e.interPos.emplace_back();
+		//e.bounds.emplace_back();
+		e.texture=(p.texture);
+		
+		e.anims=(p.animParams);
+		e.aprogress=(p.animProgress);
+		e.createFrame=(p.createFrame);
+		
+		e.drawRadius=(p.drawRadius);
+		e.drawOrder=(p.drawOrder);
+		
+		e.directional=(p.directional);
+		
+		e.alwaysVisible=(p.alwaysVisible);
+		e.castShadow=(p.castShadow);	
+	}
+
+}
+	
+void CSimpleParticleSystemSoA::Update() {		
+	CheckDead();
+		
+	for (int i =0; i < d.size(); ++i) {
+		auto& e = d[i];
+		e.pos    += e.speed;
+		e.speed  += e.gravity;
+		e.speed  *= e.airdrag;
+
+		e.rotVal += e.rotVel;
+		e.rotVel += e.rotParams;
+
+		e.life += e.decayrate;
+		
+		e.size = e.size * e.sizeMod + e.sizeGrowth;	
+	}
+	
+
+	//LOG("xyz update %i=>%i", oldSize, pos.size());
+	
+
+}
+	
+void CSimpleParticleSystemSoA::CheckDead() {
+	for (int i =0; i < d.size();) {
+		auto& e = d[i];
+		if unlikely(e.life >= 1.0) {
+			this->Erase(i);		
+		} else 
+		{
+			++i;
+		}			
+	}
+}
+
+template <typename T>
+void remove_from_container(int idx, T&& cont) {
+	cont[idx] = cont.back();
+	cont.pop_back();
+}
+
+void CSimpleParticleSystemSoA::Erase(int idx) {
+	remove_from_container(idx, d);
+	/*
+	remove_from_container(idx, pos);
+	remove_from_container(idx, speed);
+	
+	remove_from_container(idx, rotVal);
+	remove_from_container(idx, rotVel);		
+	remove_from_container(idx, rotParams);
+	
+	remove_from_container(idx, life);
+	remove_from_container(idx, decayrate);
+	
+	remove_from_container(idx, size);
+	remove_from_container(idx, sizeGrowth);
+	remove_from_container(idx, sizeMod);
+	
+	remove_from_container(idx, gravity);
+	remove_from_container(idx, airdrag);
+	
+	remove_from_container(idx, visible);
+	remove_from_container(idx, visibleShadow);
+	remove_from_container(idx, visibleReflection);
+	remove_from_container(idx, visibleRefraction);
+	remove_from_container(idx, allyTeam);
+	
+	// draw
+	remove_from_container(idx, colorMap);
+	remove_from_container(idx, color);
+	
+	remove_from_container(idx, interPos);		
+	remove_from_container(idx, bounds);
+	remove_from_container(idx, texture);		
+	
+	remove_from_container(idx, anims);
+	remove_from_container(idx, aprogress);
+	remove_from_container(idx, createFrame);
+	
+	remove_from_container(idx, drawRadius);
+	remove_from_container(idx, drawOrder);
+	
+	remove_from_container(idx, directional);
+	
+	remove_from_container(idx, castShadow);
+	remove_from_container(idx, alwaysVisible);
+	*/
+}
+
+void CSimpleParticleSystemSoA::PreDraw() {
+	auto spectatingFullView = gu->spectatingFullView;
+	auto myAllyTeam = gu->myAllyTeam;
+	auto& th = teamHandler;
+	auto& lh = losHandler;
+	
+	const CCamera* cameras[] = {
+		CCameraHandler::GetCamera(CCamera::CAMTYPE_PLAYER),
+		CCameraHandler::GetCamera(CCamera::CAMTYPE_UWREFL),
+		CCameraHandler::GetCamera(CCamera::CAMTYPE_SHADOW)
+	};
+	
+	float timeOffset = globalRendering->timeOffset;
+	for (int i =0; i < d.size(); ++i) {
+		auto& e = d[i];
+		e.colorMap->GetColor(e.color.data(), e.life);
+		e.interPos = e.pos + e.speed * timeOffset;
+	
+		this->UpdateAnimParams(i);	
+
+			e.visible = 	
+				 e.alwaysVisible || (spectatingFullView || (th.IsValidAllyTeam(e.allyTeam) && 
+				  th.Ally(e.allyTeam, myAllyTeam) ||
+				(lh->InLos(e.pos, myAllyTeam) || 
+				  lh->InAirLos(e.pos, myAllyTeam))));			
+
+			e.visibleRefraction = e.visible && e.interPos.y <= e.drawRadius && cameras[0]->InView(e.interPos, e.drawRadius);
+			e.visibleReflection = e.visible && cameras[1]->InView(e.interPos, e.drawRadius);
+			e.visibleShadow = e.castShadow && e.visible && cameras[2]->InView(e.interPos, e.drawRadius);	
+	}
+
+}
+
+void CSimpleParticleSystemSoA::Draw() {
+
+	auto* cam = camera;
+
+	// streflop faster alternative
+	const static auto safeANormalize = [&](const auto& ydir) {	
+		const float sql = ydir.SqLength();
+		if likely(sql > float3::nrm_eps()) {
+			return ydir * fastmath::isqrt_nosse(sql);
+		}
+		return ydir;
+	};
+
+	auto cpos = cam->GetPos();
+	auto fwd = camera->GetForward();
+	
+	// TODO branchless processing?
+	for (int i =0; i < d.size(); ++i) {
+		auto& e = d[i];
+		
+		if (DRAW_REFRACTION && !e.visibleRefraction) {
+			continue;
+		} else if (DRAW_REFLECTION && !e.visibleReflection) {
+			continue;
+		}
+		
+		const float3 zdir = safeANormalize(e.pos - cpos);
+		float3 ydir = zdir.cross(e.speed);
+		float yDirLen2 = ydir.SqLength();
+		ydir = safeANormalize(ydir);
+		const float3 xdir = ydir.cross(zdir);
+
+		if (e.directional && yDirLen2 > 0.001f)
+		{
+			e.bounds = {
+				-ydir * e.size - xdir * e.size,
+				-ydir * e.size + xdir * e.size,
+				 ydir * e.size + xdir * e.size,
+				 ydir * e.size - xdir * e.size
+			};
+			if (std::fabs(e.rotVal) > 0.01f) {
+				float3::rotate<false>(e.rotVal, zdir, e.bounds);
+			}
+		}
+		else
+		{
+			const float3 cameraRight = camera->GetRight() * e.size;
+			const float3 cameraUp    = camera->GetUp()    * e.size;				
+			e.bounds = {
+				-cameraRight - cameraUp,
+				 cameraRight - cameraUp,
+				 cameraRight + cameraUp,
+				-cameraRight + cameraUp
+			};
+			if (std::fabs(e.rotVal) > 0.01f) {
+				float3::rotate<false>(e.rotVal, fwd, e.bounds);
+			}
+		}
+	//}		
+	
+	//for (int i =0; i < pos.size(); ++i) {
+		//if (!visible[i]) {
+		//	continue;
+		//}
+		AddEffectsQuad(
+			{ e.interPos + e.bounds[0], e.texture->xstart, e.texture->ystart, e.color.data() },
+			{ e.interPos + e.bounds[1], e.texture->xend,   e.texture->ystart, e.color.data() },
+			{ e.interPos + e.bounds[2], e.texture->xend,   e.texture->yend,   e.color.data() },
+			{ e.interPos + e.bounds[3], e.texture->xstart, e.texture->yend,   e.color.data() },
+			e.anims, e.aprogress
+		);
+		
+		
+		// add order so we can sort them later
+		uint64_t order (static_cast<uint64_t>(e.drawOrder) << 32 | static_cast<uint32_t>(-cam->ProjectedDistance(e.pos)));
+		AddQuadOrder(order);		
+	}	
+}
+
+void CSimpleParticleSystemSoA::DrawShadow() {
+	// visibility
+	const bool shadowPass = (camera->GetCamType() == CCamera::CAMTYPE_SHADOW);
+	assert(shadowPass);
+	
+	auto* cam = camera;
+	
+	// streflop alternative
+	const static auto safeANormalize = [&](const auto& ydir) {	
+		const float sql = ydir.SqLength();
+		if likely(sql > float3::nrm_eps()) {
+			return ydir * fastmath::isqrt_nosse(sql);
+		}
+		return ydir;
+	};
+
+	auto cpos = cam->GetPos();
+	auto fwd = camera->GetForward();
+	
+	for (int i =0; i < d.size(); ++i) {
+		auto& e = d[i];
+		if (!e.visibleShadow) {
+			continue;
+		}
+		const float3 zdir = safeANormalize(e.pos - cpos);
+		float3 ydir = zdir.cross(e.speed);
+		float yDirLen2 = ydir.SqLength();
+		ydir = safeANormalize(ydir);
+		const float3 xdir = ydir.cross(zdir);
+
+		{
+			const float3 cameraRight = camera->GetRight() * e.size;
+			const float3 cameraUp    = camera->GetUp()    * e.size;				
+			e.bounds = {
+				-cameraRight - cameraUp,
+				 cameraRight - cameraUp,
+				 cameraRight + cameraUp,
+				-cameraRight + cameraUp
+			};
+			if (std::fabs(e.rotVal) > 0.01f) {
+				float3::rotate<false>(e.rotVal, fwd, e.bounds);
+			}
+		}
+	//}		
+
+	//for (int i =0; i < pos.size(); ++i) {
+		//if (!visible[i]) {
+		//	continue;
+		//}
+		AddEffectsQuad(
+			{ e.interPos + e.bounds[0], e.texture->xstart, e.texture->ystart, e.color.data() },
+			{ e.interPos + e.bounds[1], e.texture->xend,   e.texture->ystart, e.color.data() },
+			{ e.interPos + e.bounds[2], e.texture->xend,   e.texture->yend,   e.color.data() },
+			{ e.interPos + e.bounds[3], e.texture->xstart, e.texture->yend,   e.color.data() },
+			e.anims, e.aprogress
+		);
+		
+		// shadow not sorted
+	}	
+}
+
+void AddMiniMapVertices(VA_TYPE_C&& v1, VA_TYPE_C&& v2)
+{
+	auto& mmLnsRB = CProjectile::GetMiniMapLinesRB();
+	auto& mmPtsRB = CProjectile::GetMiniMapPointsRB();
+	if (v1.pos.equals(v2.pos)) {
+		mmPtsRB.AddVertex(std::move(v1));
+	}
+	else {
+		mmLnsRB.AddVertex(std::move(v1));
+		mmLnsRB.AddVertex(std::move(v2));
+	}
+}
+
+void CSimpleParticleSystemSoA::DrawOnMinimap() {
+	for (int i =0; i < d.size(); ++i) {
+		auto& e = d[i];
+		if (!e.visible)
+			continue;
+		AddMiniMapVertices({ e.pos, color4::whiteA }, { e.pos + e.speed, color4::whiteA });
+	}
+}
+	
+void CSimpleParticleSystemSoA::UpdateAnimParams(int idx) {
+	int gameFrame = gs->frameNum;
+	float timeOffset = globalRendering->timeOffset;
+	
+	auto& e = d[idx];
+
+		auto& animParams = e.anims;
+		auto& animProgress = e.aprogress;
+		if (static_cast<int>(animParams.x) <= 1 && static_cast<int>(animParams.y) <= 1) {
+			animProgress = 0.0f;
+			return;
+		}
+	
+		const float t = (gameFrame + timeOffset - e.createFrame);
+		const float animSpeed = std::fabs(animParams.z);
+		
+		if (animParams.z < 0.0f) {
+			animProgress = 1.0f - std::fabs(std::fmod(t, 2.0f * animSpeed) / animSpeed - 1.0f);
+		}
+		else {
+			animProgress = std::fmod(t, animSpeed) / animSpeed;
+		}
+
 }

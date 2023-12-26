@@ -280,8 +280,9 @@ int LuaVFS::DirList(lua_State* L, bool synced)
 
 	const std::string& pattern = luaL_optstring(L, 2, "*");
 	const std::string& modes = GetModes(L, 3, synced);
+	const bool recursive = luaL_optboolean(L, 4, false);
 
-	LuaUtils::PushStringVector(L, CFileHandler::DirList(dir, pattern, modes));
+	LuaUtils::PushStringVector(L, CFileHandler::DirList(dir, pattern, modes, recursive));
 	return 1;
 }
 
@@ -310,8 +311,9 @@ int LuaVFS::SubDirs(lua_State* L, bool synced)
 
 	const std::string& pattern = luaL_optstring(L, 2, "*");
 	const std::string& modes = GetModes(L, 3, synced);
+	const bool recursive = luaL_optboolean(L, 4, false);
 
-	LuaUtils::PushStringVector(L, CFileHandler::SubDirs(dir, pattern, modes));
+	LuaUtils::PushStringVector(L, CFileHandler::SubDirs(dir, pattern, modes, recursive));
 	return 1;
 }
 
@@ -510,7 +512,7 @@ int LuaVFS::ZlibCompress(lua_State* L)
 	size_t inSize = 0;
 	const std::uint8_t* inData = reinterpret_cast<const std::uint8_t*>(luaL_checklstring(L, 1, &inSize));
 
-	const std::vector<std::uint8_t> compressed = std::move(zlib::deflate(inData, inSize));
+	const std::vector<std::uint8_t> compressed = zlib::deflate(inData, inSize);
 
 	if (!compressed.empty()) {
 		lua_pushlstring(L, reinterpret_cast<const char*>(compressed.data()), compressed.size());
@@ -525,7 +527,7 @@ int LuaVFS::ZlibDecompress(lua_State* L)
 	size_t inSize = 0;
 	const std::uint8_t* inData = reinterpret_cast<const std::uint8_t*>(luaL_checklstring(L, 1, &inSize));
 
-	const std::vector<std::uint8_t> uncompressed = std::move(zlib::inflate(inData, inSize));
+	const std::vector<std::uint8_t> uncompressed = zlib::inflate(inData, inSize);
 
 	if (!uncompressed.empty()) {
 		lua_pushlstring(L, reinterpret_cast<const char*>(uncompressed.data()), uncompressed.size());

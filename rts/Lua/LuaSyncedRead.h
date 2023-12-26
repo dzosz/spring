@@ -43,6 +43,8 @@ class LuaSyncedRead {
 
 		static int GetHeadingFromVector(lua_State* L);
 		static int GetVectorFromHeading(lua_State* L);
+		static int GetFacingFromHeading(lua_State* L);
+		static int GetHeadingFromFacing(lua_State* L);
 
 		static int GetSideData(lua_State* L);
 
@@ -131,6 +133,7 @@ class LuaSyncedRead {
 		static int GetUnitBuildFacing(lua_State* L);
 		static int GetUnitIsBuilding(lua_State* L);
 		static int GetUnitWorkerTask(lua_State* L);
+		static int GetUnitEffectiveBuildRange(lua_State* L);
 		static int GetUnitCurrentBuildPower(lua_State* L);
 		static int GetUnitHarvestStorage(lua_State* L);
 		static int GetUnitBuildParams(lua_State* L);
@@ -231,6 +234,7 @@ class LuaSyncedRead {
 		static int GetProjectileDamages(lua_State* L);
 		static int GetProjectileName(lua_State* L); // DEPRECATE ME?
 
+		static int IsPosInMap(lua_State* L);
 		static int GetGroundHeight(lua_State* L);
 		static int GetGroundOrigHeight(lua_State* L);
 		static int GetGroundNormal(lua_State* L);
@@ -257,8 +261,10 @@ class LuaSyncedRead {
 		static int IsUnitInJammer(lua_State* L);
 		static int GetClosestValidPosition(lua_State* L);
 
+		static int GetModelRootPiece(lua_State* L);
 		static int GetModelPieceList(lua_State* L);
 		static int GetModelPieceMap(lua_State* L);
+		static int GetUnitRootPiece(lua_State* L);
 		static int GetUnitPieceMap(lua_State* L);
 		static int GetUnitPieceList(lua_State* L);
 		static int GetUnitPieceInfo(lua_State* L);
@@ -270,6 +276,7 @@ class LuaSyncedRead {
 		static int GetUnitScriptPiece(lua_State* L);
 		static int GetUnitScriptNames(lua_State* L);
 
+		static int GetFeatureRootPiece(lua_State* L);
 		static int GetFeaturePieceMap(lua_State* L);
 		static int GetFeaturePieceList(lua_State* L);
 		static int GetFeaturePieceInfo(lua_State* L);

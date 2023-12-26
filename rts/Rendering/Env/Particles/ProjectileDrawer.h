@@ -38,6 +38,7 @@ public:
 	void DrawGroundFlashes();
 	void DrawShadowPassOpaque();
 	void DrawShadowPassTransparent();
+	void SortQuadBufferByDrawOrder();
 
 	void LoadWeaponTextures();
 	void UpdateTextures();
@@ -168,7 +169,7 @@ private:
 	std::array<ModelRenderContainer<CProjectile>, MODELTYPE_CNT> modelRenderers;
 
 	/// used to render particle effects in back-to-front order
-	std::vector<CProjectile*> sortedProjectiles;
+	std::vector<std::pair<std::pair<int, float>, CProjectile*>> sortedProjectiles;
 	std::vector<CProjectile*> unsortedProjectiles;
 
 	bool drawSorted = true;

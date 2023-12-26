@@ -62,6 +62,7 @@ private:
 	float3 oldSmoke;
 	float3 oldDir;
 	CSmokeTrailProjectile* smokeTrail;
+	unsigned int ent=0;
 private:
 	inline float GetSmokeSize() const;
 	inline float GetSmokeColor() const;

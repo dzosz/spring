@@ -93,7 +93,7 @@ float CGameHelper::CalcImpulseScale(const DamageArray& damages, const float expD
 	const float impulseDmgMult = (damages.GetDefault() + damages.impulseBoost);
 	const float rawImpulseScale = damages.impulseFactor * expDistanceMod * impulseDmgMult;
 
-	return Clamp(rawImpulseScale, -MAX_EXPLOSION_IMPULSE, MAX_EXPLOSION_IMPULSE);
+	return std::clamp(rawImpulseScale, -MAX_EXPLOSION_IMPULSE, MAX_EXPLOSION_IMPULSE);
 }
 
 void CGameHelper::DoExplosionDamage(
@@ -1028,7 +1028,7 @@ float3 CGameHelper::ClosestBuildPos(
 
 	const int allyTeam = teamHandler.AllyTeam(team);
 	const int rawRadius = static_cast<int>(searchRadius / BUILD_SQUARE_SIZE);
-	const int maxRadius = Clamp(rawRadius, 1, 128);
+	const int maxRadius = std::clamp(rawRadius, 1, 128);
 
 	const auto& offsets = GetSearchOffsetTable(maxRadius);
 
@@ -1139,10 +1139,10 @@ float CGameHelper::GetBuildHeight(const float3& pos, const UnitDef* unitdef, boo
 	const int px = (pos.x - (xsize * (SQUARE_SIZE >> 1))) / SQUARE_SIZE;
 	const int pz = (pos.z - (zsize * (SQUARE_SIZE >> 1))) / SQUARE_SIZE;
 	// top-left and bottom-right footprint corner (clamped)
-	const int x1 = Clamp(px        , 0, mapDims.mapx);
-	const int z1 = Clamp(pz        , 0, mapDims.mapy);
-	const int x2 = Clamp(x1 + xsize, 0, mapDims.mapx);
-	const int z2 = Clamp(z1 + zsize, 0, mapDims.mapy);
+	const int x1 = std::clamp(px        , 0, mapDims.mapx);
+	const int z1 = std::clamp(pz        , 0, mapDims.mapy);
+	const int x2 = std::clamp(x1 + xsize, 0, mapDims.mapx);
+	const int z2 = std::clamp(z1 + zsize, 0, mapDims.mapy);
 
 	for (int x = x1; x <= x2; x++) {
 		for (int z = z1; z <= z2; z++) {
@@ -1189,6 +1189,44 @@ CGameHelper::BuildSquareStatus CGameHelper::TestUnitBuildSquare(
 	const std::vector<Command>* commands,
 	int threadOwner
 ) {
+	TestUnitBuildSquareCache::ClearStaleItems(synced);
+	auto key = TestUnitBuildSquareCache::GetCacheKey(buildInfo, allyteam, synced);
+	bool cacheFound = false;
+	const auto it = TestUnitBuildSquareCache::GetCacheItem(key, cacheFound);
+
+	if (cacheFound) {
+		feature = it->feature;
+
+		if (commands != nullptr) {
+			assert(!synced);
+			*canbuildpos = it->canbuildpos;
+			*featurepos = it->featurepos;
+			*nobuildpos = it->nobuildpos;
+		}
+
+		return it->result;
+	}
+
+	const auto SaveToCache = [&](CGameHelper::BuildSquareStatus result) {
+		if (!commands)
+			TestUnitBuildSquareCache::SaveToCache(
+				gs->frameNum,
+				std::move(key),
+				feature,
+				result
+			);
+		else
+			TestUnitBuildSquareCache::SaveToCache(
+				gs->frameNum,
+				std::move(key),
+				feature,
+				result,
+				*canbuildpos,
+				*featurepos,
+				*nobuildpos
+			);
+	};
+
 	feature = nullptr;
 
 	const int xsize = buildInfo.GetXSize();
@@ -1286,10 +1324,11 @@ CGameHelper::BuildSquareStatus CGameHelper::TestUnitBuildSquare(
 		}
 	} else {
 		// out of map?
-		if (static_cast<unsigned>(x1) > mapDims.mapx || static_cast<unsigned>(x2) > mapDims.mapx)
+		if (static_cast<unsigned>(x1) > mapDims.mapx || static_cast<unsigned>(x2) > mapDims.mapx ||
+			static_cast<unsigned>(z1) > mapDims.mapy || static_cast<unsigned>(z2) > mapDims.mapy) {
+			SaveToCache(BUILDSQUARE_BLOCKED);
 			return BUILDSQUARE_BLOCKED;
-		if (static_cast<unsigned>(z1) > mapDims.mapy || static_cast<unsigned>(z2) > mapDims.mapy)
-			return BUILDSQUARE_BLOCKED;
+		}
 
 		// this can be called in either context
 		for (int z = z1; z < z2; z++) {
@@ -1299,12 +1338,15 @@ CGameHelper::BuildSquareStatus CGameHelper::TestUnitBuildSquare(
 
 				const BuildSquareStatus sqrStatus = TestBuildSquare(sqrPos, xrange, zrange, buildInfo, moveDef, feature, allyteam, synced);
 
-				if ((testStatus = std::min(testStatus, sqrStatus)) == BUILDSQUARE_BLOCKED)
+				if ((testStatus = std::min(testStatus, sqrStatus)) == BUILDSQUARE_BLOCKED) {
+					SaveToCache(BUILDSQUARE_BLOCKED);
 					return BUILDSQUARE_BLOCKED;
+				}
 			}
 		}
 	}
 
+	SaveToCache(testStatus);
 	return testStatus;
 }
 
@@ -1435,8 +1477,8 @@ bool CGameHelper::TestBlockSquareForBuildOnly(
  * @return the build Command, or a Command with id 0 if none is found
  */
 Command CGameHelper::GetBuildCommand(const float3& pos, const float3& dir) {
-	for (const auto& pair: unitHandler.GetBuilderCAIs()) {
-		const CUnit* unit = unitHandler.GetUnit(pair.first);
+	for (const auto& [bid, builderCAI] : unitHandler.GetBuilderCAIs()) {
+		const CUnit* unit = unitHandler.GetUnit(bid);
 
 		if (unit->team != gu->myTeam)
 			continue;
@@ -1504,7 +1546,7 @@ bool CGameHelper::CheckTerrainConstraints(
 	}
 
 	if (clampedHeight != nullptr)
-		*clampedHeight = Clamp(groundHeight, -maxDepth, -minDepth);
+		*clampedHeight = std::clamp(groundHeight, -maxDepth, -minDepth);
 
 	/* NB: mobiles also have maxHeightDiff, which can have a different
 	 * value compared to moveDef and could be used here (for example,
@@ -1527,3 +1569,21 @@ bool CGameHelper::CheckTerrainConstraints(
 	return (depthCheck && slopeCheck);
 }
 
+void CGameHelper::TestUnitBuildSquareCache::ClearStaleItems(bool synced)
+{
+	spring::VectorEraseAllIf(testUnitBuildSquareCache, [synced](const auto& item) {
+		return gs->frameNum - item.createFrame >= CACHE_VALIDITY_PERIOD[synced];
+	});
+}
+
+CGameHelper::TestUnitBuildSquareCache::KeyT CGameHelper::TestUnitBuildSquareCache::GetCacheKey(const BuildInfo& buildInfo, int allyTeamID, bool synced)
+{
+	return std::make_tuple(synced, buildInfo.pos, buildInfo.buildFacing, allyTeamID, buildInfo.def);
+}
+
+void CGameHelper::TestUnitBuildSquareCache::Invalidate(const KeyT& key)
+{
+	spring::VectorEraseIf(testUnitBuildSquareCache, [&key](const auto& item) {
+		return (key == item.key);
+	});
+}

@@ -56,6 +56,7 @@
 #include "Rendering/Env/WaterRendering.h"
 #include "Rendering/Env/MapRendering.h"
 #include "Rendering/GL/glExtra.h"
+#include "Rendering/GL/TexBind.h"
 #include "Rendering/Models/3DModel.h"
 #include "Rendering/Shaders/Shader.h"
 #include "Rendering/Textures/Bitmap.h"
@@ -1208,7 +1209,7 @@ int LuaOpenGL::GetViewRange(lua_State* L)
 	constexpr int minCamType = CCamera::CAMTYPE_PLAYER;
 	constexpr int maxCamType = CCamera::CAMTYPE_ACTIVE;
 
-	const CCamera* cam = CCameraHandler::GetCamera(Clamp(luaL_optint(L, 1, CCamera::CAMTYPE_ACTIVE), minCamType, maxCamType));
+	const CCamera* cam = CCameraHandler::GetCamera(std::clamp(luaL_optint(L, 1, CCamera::CAMTYPE_ACTIVE), minCamType, maxCamType));
 
 	lua_pushnumber(L, cam->GetNearPlaneDist());
 	lua_pushnumber(L, cam->GetFarPlaneDist());
@@ -3413,7 +3414,7 @@ int LuaOpenGL::CreateTexture(lua_State* L)
 				uint32_t strHash = hashString(lua_tostring(L, -2));
 				switch (strHash) {
 					case hashString("samples"): {
-						// not Clamp(lua_tonumber(L, -1), 2, globalRendering->msaaLevel);
+						// not std::clamp(lua_tonumber(L, -1), 2, globalRendering->msaaLevel);
 						// AA sample count has to equal the default FB or blitting breaks
 						tex.samples = globalRendering->msaaLevel;
 					} break;
@@ -3627,12 +3628,8 @@ int LuaOpenGL::GenerateMipmap(lua_State* L)
 	if (tex == nullptr)
 		return 0;
 
-	GLint currentBinding;
-	assert(LuaTextures::Format2Query.find(tex->target) != LuaTextures::Format2Query.end());
-	glGetIntegerv(LuaTextures::Format2Query.find(tex->target)->second, &currentBinding);
-	glBindTexture(tex->target, tex->id);
+	auto texBind = GL::TexBind(tex->target, tex->id);
 	glGenerateMipmapEXT(tex->target);
-	glBindTexture(tex->target, currentBinding);
 
 	return 0;
 }

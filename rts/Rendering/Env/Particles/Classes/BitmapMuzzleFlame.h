@@ -39,6 +39,7 @@ private:
 	int ttl;
 
 	float invttl;
+	friend class CProjectileHandler;
 };
 
 #endif // BITMAP_MUZZLE_FLAME_H

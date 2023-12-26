@@ -21,6 +21,15 @@ class CFeature;
 class CPlasmaRepulser;
 class CGroundFlash;
 struct UnitDef;
+struct CSimpleParticleSystem;
+struct CBitmapMuzzleFlame;
+struct CDirtProjectile;
+struct CExploSpikeProjectile;
+struct CHeatCloudProjectile;
+struct CMuzzleFlame;
+struct CSmokeProjectile;
+struct CSmokeTrailProjectile;
+struct CBubbleProjectile;
 
 typedef std::vector<CGroundFlash*> GroundFlashContainer;
 typedef std::vector<FlyingPiece> FlyingPieceContainer;
@@ -78,6 +87,18 @@ public:
 	);
 	void AddNanoParticle(const float3, const float3, const UnitDef*, int team, bool highPriority);
 	void AddNanoParticle(const float3, const float3, const UnitDef*, int team, float radius, bool inverse, bool highPriority);
+
+	void AddUnsyncedParticleToQueue(CProjectile* proj);
+	void DrainUnsyncedProjectileQueue();
+	void AddECSProjectile(CSimpleParticleSystem* proj);
+	void AddECSProjectile(CBitmapMuzzleFlame* proj);
+	void AddECSProjectile(CDirtProjectile* proj);
+	void AddECSProjectile(CExploSpikeProjectile* proj);
+	void AddECSProjectile(CHeatCloudProjectile* proj);
+	void AddECSProjectile(CMuzzleFlame* proj);
+	void AddECSProjectile(CSmokeProjectile* proj);
+	void AddECSProjectile(CSmokeTrailProjectile* proj);
+	void AddECSProjectile(CBubbleProjectile* proj);
 
 public:
 	int maxParticles = 0;

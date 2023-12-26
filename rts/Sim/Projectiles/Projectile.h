@@ -27,6 +27,7 @@ class CProjectile: public CExpGenSpawnable
 	CR_DECLARE_DERIVED(CProjectile)
 
 public:
+	friend class CGenericParticleProjectile;
 	CProjectile();
 	CProjectile(
 		const float3& pos,
@@ -117,10 +118,10 @@ public:
 	float myrange = 0.0f;          // used by WeaponProjectile::TraveledRange
 	float mygravity = 0.0f;
 
-	float sortDist = 0.0f;         // distance used for z-sorting when rendering
+	//float sortDist = 0.0f;         // distance used for z-sorting when rendering
 	float sortDistOffset = 0.0f;   // an offset used for z-sorting
 
-	int drawOrder = 0;
+	//int drawOrder = 0;
 
 	inline static spring::mutex mut = {};
 protected:

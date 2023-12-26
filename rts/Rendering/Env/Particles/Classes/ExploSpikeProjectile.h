@@ -7,6 +7,7 @@
 
 class CExploSpikeProjectile : public CProjectile
 {
+	friend class CProjectileHandler;
 	CR_DECLARE_DERIVED(CExploSpikeProjectile)
 
 public:

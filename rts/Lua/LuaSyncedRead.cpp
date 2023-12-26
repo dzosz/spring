@@ -132,6 +132,8 @@ bool LuaSyncedRead::PushEntries(lua_State* L)
 
 	REGISTER_LUA_CFUNC(GetHeadingFromVector);
 	REGISTER_LUA_CFUNC(GetVectorFromHeading);
+	REGISTER_LUA_CFUNC(GetHeadingFromFacing);
+	REGISTER_LUA_CFUNC(GetFacingFromHeading);
 
 	REGISTER_LUA_CFUNC(GetSideData);
 
@@ -221,6 +223,7 @@ bool LuaSyncedRead::PushEntries(lua_State* L)
 	REGISTER_LUA_CFUNC(GetUnitBuildFacing);
 	REGISTER_LUA_CFUNC(GetUnitIsBuilding);
 	REGISTER_LUA_CFUNC(GetUnitWorkerTask);
+	REGISTER_LUA_CFUNC(GetUnitEffectiveBuildRange);
 	REGISTER_LUA_CFUNC(GetUnitCurrentBuildPower);
 	REGISTER_LUA_CFUNC(GetUnitHarvestStorage);
 	REGISTER_LUA_CFUNC(GetUnitBuildParams);
@@ -318,6 +321,7 @@ bool LuaSyncedRead::PushEntries(lua_State* L)
 	REGISTER_LUA_CFUNC(GetProjectileName);
 	REGISTER_LUA_CFUNC(GetProjectileDamages);
 
+	REGISTER_LUA_CFUNC(IsPosInMap);
 	REGISTER_LUA_CFUNC(GetGroundHeight);
 	REGISTER_LUA_CFUNC(GetGroundOrigHeight);
 	REGISTER_LUA_CFUNC(GetGroundNormal);
@@ -344,8 +348,10 @@ bool LuaSyncedRead::PushEntries(lua_State* L)
 	REGISTER_LUA_CFUNC(IsUnitInJammer);
 	REGISTER_LUA_CFUNC(GetClosestValidPosition);
 
+	REGISTER_LUA_CFUNC(GetModelRootPiece);
 	REGISTER_LUA_CFUNC(GetModelPieceList);
 	REGISTER_LUA_CFUNC(GetModelPieceMap);
+	REGISTER_LUA_CFUNC(GetUnitRootPiece);
 	REGISTER_LUA_CFUNC(GetUnitPieceMap);
 	REGISTER_LUA_CFUNC(GetUnitPieceList);
 	REGISTER_LUA_CFUNC(GetUnitPieceInfo);
@@ -356,6 +362,7 @@ bool LuaSyncedRead::PushEntries(lua_State* L)
 	REGISTER_LUA_CFUNC(GetUnitScriptPiece);
 	REGISTER_LUA_CFUNC(GetUnitScriptNames);
 
+	REGISTER_LUA_CFUNC(GetFeatureRootPiece);
 	REGISTER_LUA_CFUNC(GetFeaturePieceMap);
 	REGISTER_LUA_CFUNC(GetFeaturePieceList);
 	REGISTER_LUA_CFUNC(GetFeaturePieceInfo);
@@ -1338,6 +1345,28 @@ int LuaSyncedRead::GetVectorFromHeading(lua_State* L)
 	return 2;
 }
 
+/***
+ * @function Spring.GetFacingFromHeading
+ * @number heading
+ * @treturn number facing
+ */
+int LuaSyncedRead::GetFacingFromHeading(lua_State* L)
+{
+	lua_pushnumber(L, ::GetFacingFromHeading(luaL_checknumber(L, 1)));
+	return 1;
+}
+
+/***
+ * @function Spring.GetHeadingFromFacing
+ * @number facing
+ * @treturn number heading
+ */
+int LuaSyncedRead::GetHeadingFromFacing(lua_State* L)
+{
+	lua_pushnumber(L, ::GetHeadingFromFacing(luaL_checknumber(L, 1)));
+	return 1;
+}
+
 
 /******************************************************************************
  * Sides and Factions
@@ -1461,16 +1490,16 @@ int LuaSyncedRead::GetGaiaTeamID(lua_State* L)
  */
 int LuaSyncedRead::GetAllyTeamStartBox(lua_State* L)
 {
-	const std::vector<AllyTeam>& allyData = CGameSetup::GetAllyStartingData();
-	const unsigned int allyTeam = luaL_checkint(L, 1);
+	const unsigned int allyTeamID = luaL_checkint(L, 1);
 
-	if (allyTeam >= allyData.size())
+	if (!teamHandler.IsValidAllyTeam(allyTeamID))
 		return 0;
 
-	const float xmin = (mapDims.mapx * SQUARE_SIZE) * allyData[allyTeam].startRectLeft;
-	const float zmin = (mapDims.mapy * SQUARE_SIZE) * allyData[allyTeam].startRectTop;
-	const float xmax = (mapDims.mapx * SQUARE_SIZE) * allyData[allyTeam].startRectRight;
-	const float zmax = (mapDims.mapy * SQUARE_SIZE) * allyData[allyTeam].startRectBottom;
+	const AllyTeam& allyTeam = teamHandler.GetAllyTeam(allyTeamID);
+	const float xmin = (mapDims.mapx * SQUARE_SIZE) * allyTeam.startRectLeft;
+	const float zmin = (mapDims.mapy * SQUARE_SIZE) * allyTeam.startRectTop;
+	const float xmax = (mapDims.mapx * SQUARE_SIZE) * allyTeam.startRectRight;
+	const float zmax = (mapDims.mapy * SQUARE_SIZE) * allyTeam.startRectBottom;
 
 	lua_pushnumber(L, xmin);
 	lua_pushnumber(L, zmin);
@@ -3718,7 +3747,7 @@ int LuaSyncedRead::GetUnitPosErrorParams(lua_State* L)
 		return 0;
 
 	const int optAllyTeam = luaL_optinteger(L, 2, 0);
-	const int argAllyTeam = Clamp(optAllyTeam, 0, teamHandler.ActiveAllyTeams());
+	const int argAllyTeam = std::clamp(optAllyTeam, 0, teamHandler.ActiveAllyTeams());
 
 	lua_pushnumber(L, unit->posErrorVector.x);
 	lua_pushnumber(L, unit->posErrorVector.y);
@@ -3832,9 +3861,13 @@ int LuaSyncedRead::GetUnitAllyTeam(lua_State* L)
 }
 
 
-/***
+/*** Checks if a unit is neutral (NOT Gaia!)
  *
  * @function Spring.GetUnitNeutral
+ *
+ * Note that a "neutral" unit can belong to any ally-team (ally, enemy, Gaia).
+ * To check if a unit is Gaia, check its owner team.
+ *
  * @number unitID
  * @treturn nil|bool
  */
@@ -3991,8 +4024,8 @@ int LuaSyncedRead::GetUnitMetalExtraction(lua_State* L)
  *
  * @function Spring.GetUnitExperience
  * @number unitID
- * @treturn nil|number
- * @treturn number 0.0 - 1.0 as experience approaches infinity
+ * @treturn number XP [0.0; +∞)
+ * @treturn number limXP [0.0; 1.0) as experience approaches infinity
  */
 int LuaSyncedRead::GetUnitExperience(lua_State* L)
 {
@@ -4192,10 +4225,14 @@ int LuaSyncedRead::GetUnitBuildFacing(lua_State* L)
 }
 
 
-/***
+/*** Checks whether a unit is currently building another (NOT for checking if it's a structure)
  *
  * @function Spring.GetUnitIsBuilding
+ *
+ * Works for both mobile builders and factories.
+ *
  * @number unitID
+ * @treturn number buildeeUnitID or nil
  */
 int LuaSyncedRead::GetUnitIsBuilding(lua_State* L)
 {
@@ -4221,12 +4258,24 @@ int LuaSyncedRead::GetUnitIsBuilding(lua_State* L)
 	return 0;
 }
 
-/***
+/*** Checks a builder's current task
  *
  * @function Spring.GetUnitWorkerTask
+ *
+ * Checks what a builder is currently doing. This is not the same as `Spring.GetUnitCurrentCommand`,
+ * because you can have a command at the front of the queue and not be doing it (for example because
+ * the target is still too far away), and on the other hand you can also be doing a task despite not
+ * having it in front of the queue (for example you're Guarding another builder who does). Also, it
+ * resolves the Repair command into either actual repair, or construction assist (in which case it
+ * returns the appropriate "build" command). Only build-related commands are returned (no Move or any
+ * custom commands).
+ *
+ * The possible commands returned are repair, reclaim, resurrect, capture, restore,
+ * and build commands (negative buildee unitDefID).
+ *
  * @number unitID
  * @treturn number cmdID of the relevant command
- * @treturn number ID of the target, if applicable
+ * @treturn number targetID if applicable (all except RESTORE)
  */
 int LuaSyncedRead::GetUnitWorkerTask(lua_State* L)
 {
@@ -4271,6 +4320,62 @@ int LuaSyncedRead::GetUnitWorkerTask(lua_State* L)
 	} else {
 		return 0;
 	}
+}
+
+/***
+ *
+ * @function Spring.GetUnitEffectiveBuildRange
+ * Useful for setting move goals manually.
+ * @number unitID
+ * @number buildeeDefID or nil
+ * @treturn number effectiveBuildRange counted to the center of prospective buildee; buildRange if buildee nil
+ */
+int LuaSyncedRead::GetUnitEffectiveBuildRange(lua_State* L)
+{
+	const auto unit = ParseInLosUnit(L, __func__, 1);
+	if (unit == nullptr)
+		return 0;
+
+	const auto builderCAI = dynamic_cast <const CBuilderCAI*> (unit->commandAI);
+	if (builderCAI == nullptr)
+		return 0;
+
+	/* FIXME: there are some cases where a unitDefID does not suffice.
+	 * This function was mostly created as a reactive afterthought so
+	 * does not handle them properly, but accepting `nil` acknowledges
+	 * their existence to some extent:
+	 *
+	 *  - features, for example reclaim. I think ideally a thingID would
+	 *    be the third argument (exclusive with the unitDefID), but this
+	 *    requires the featureID ticket (#717) to be done first.
+	 *
+	 *  - terraform (restore ground). Fourth boolean parameter? Sounds
+	 *    like it's getting a bit bloated, though it's rare and doesn't
+	 *    actually pollute the usual use cases.
+	 *
+	 *  - design question: would featureDefID ever be a sensible thing
+	 *    to use here? I doubt, but it's something to keep in mind. */
+	if (lua_isnoneornil(L, 2)) {
+		lua_pushnumber(L, builderCAI->GetBuildRange(0.0f));
+		return 1;
+	}
+
+	const auto buildeeDefID = luaL_checkint(L, 2);
+	const auto unitDef = unitDefHandler->GetUnitDefByID(buildeeDefID);
+	if (unitDef == nullptr)
+		luaL_error(L, "Nonexistent buildeeDefID %d passed to Spring.GetUnitEffectiveBuildRange", (int) buildeeDefID);
+
+	const auto model = unitDef->LoadModel();
+	if (model == nullptr)
+		return 0;
+
+	/* FIXME: this is what BuilderCAI does, but can radius actually
+	 * be negative? Sounds worth asserting otherwise at model load. */
+	const auto radius = std::max(0.f, model->radius);
+
+	const auto effectiveBuildRange = builderCAI->GetBuildRange(radius);
+	lua_pushnumber(L, effectiveBuildRange);
+	return 1;
 }
 
 /***
@@ -5888,8 +5993,8 @@ int LuaSyncedRead::GetUnitCmdDescs(lua_State* L)
 			endIndex = startIndex;
 		}
 	}
-	startIndex = Clamp(startIndex, 0, lastDesc);
-	endIndex   = Clamp(endIndex  , 0, lastDesc);
+	startIndex = std::clamp(startIndex, 0, lastDesc);
+	endIndex   = std::clamp(endIndex  , 0, lastDesc);
 
 	lua_createtable(L, endIndex - startIndex, 0);
 	int count = 1;
@@ -6739,6 +6844,47 @@ int LuaSyncedRead::GetProjectileName(lua_State* L)
 
 /***
  *
+ * @function Spring.IsPosInMap
+ * @number x
+ * @number z
+ * @treturn boolean inPlayArea whether the position is in the active play area
+ * @treturn boolean inMap whether the position is in the full map area (currently this is the same as above)
+ */
+int LuaSyncedRead::IsPosInMap(lua_State* L)
+{
+	const float x = luaL_checkfloat(L, 1);
+	const float z = luaL_checkfloat(L, 2);
+
+	const float mapX = mapDims.mapx * SQUARE_SIZE;
+	const float mapZ = mapDims.mapy * SQUARE_SIZE;
+
+	const bool inMap
+		=  x >= 0
+		&& z >= 0
+		&& x <= mapX
+		&& z <= mapZ
+	;
+
+	/* Currently, the engine does not support limiting
+	 * the active play area natively, but it would be
+	 * a good feature to have, so let's be future-proof.
+	 *
+	 * This would be things like:
+	 *  - dynamically expanding map. Primarily for single
+	 *    player missions (think Supcom) but not necessarily.
+	 *  - circular maps, think 0 A.D. (where the technical map
+	 *    stays a square but corners are outside the play area).
+	 *  - just a decoration / flavor area outside the map proper.
+	 */
+	const bool inPlayArea = inMap;
+
+	lua_pushboolean(L, inPlayArea);
+	lua_pushboolean(L, inMap);
+	return 2;
+}
+
+/***
+ *
  * @function Spring.GetGroundHeight
  * @number x
  * @number z
@@ -6821,8 +6967,8 @@ int LuaSyncedRead::GetGroundInfo(lua_State* L)
 	const float x = luaL_checkfloat(L, 1);
 	const float z = luaL_checkfloat(L, 2);
 
-	const int ix = Clamp(x, 0.0f, float3::maxxpos) / (SQUARE_SIZE * 2);
-	const int iz = Clamp(z, 0.0f, float3::maxzpos) / (SQUARE_SIZE * 2);
+	const int ix = std::clamp(x, 0.0f, float3::maxxpos) / (SQUARE_SIZE * 2);
+	const int iz = std::clamp(z, 0.0f, float3::maxzpos) / (SQUARE_SIZE * 2);
 
 	const int maxIndex = (mapDims.hmapx * mapDims.hmapy) - 1;
 	const int sqrIndex = std::min(maxIndex, (mapDims.hmapx * iz) + ix);
@@ -6863,10 +7009,10 @@ static void ParseMapCoords(lua_State* L, const char* caller,
 	}
 
 	// quantize and clamp
-	tx1 = Clamp((int)(fx1 / SQUARE_SIZE), 0, mapDims.mapxm1);
-	tx2 = Clamp((int)(fx2 / SQUARE_SIZE), 0, mapDims.mapxm1);
-	tz1 = Clamp((int)(fz1 / SQUARE_SIZE), 0, mapDims.mapym1);
-	tz2 = Clamp((int)(fz2 / SQUARE_SIZE), 0, mapDims.mapym1);
+	tx1 = std::clamp((int)(fx1 / SQUARE_SIZE), 0, mapDims.mapxm1);
+	tx2 = std::clamp((int)(fx2 / SQUARE_SIZE), 0, mapDims.mapxm1);
+	tz1 = std::clamp((int)(fz1 / SQUARE_SIZE), 0, mapDims.mapym1);
+	tz2 = std::clamp((int)(fz2 / SQUARE_SIZE), 0, mapDims.mapym1);
 }
 
 
@@ -7103,7 +7249,7 @@ int LuaSyncedRead::TestBuildOrder(lua_State* L)
 }
 
 
-/***
+/*** Snaps a position to the building grid
  *
  * @function Spring.Pos2BuildPos
  * @number unitDefID
@@ -7494,6 +7640,16 @@ int LuaSyncedRead::GetClosestValidPosition(lua_State* L)
 ******************************************************************************/
 
 
+static int GetModelRootPiece(lua_State* L, const std::string& modelName)
+{
+	const auto model = modelLoader.LoadModel(modelName);
+	if (model == nullptr)
+		return 0;
+
+	lua_pushnumber(L, model->GetRootPieceIndex() + 1);
+	return 1;
+}
+
 static int GetModelPieceMap(lua_State* L, const std::string& modelName)
 {
 	if (modelName.empty())
@@ -7534,6 +7690,15 @@ static int GetModelPieceList(lua_State* L, const std::string& modelName)
 		lua_rawseti(L, -2, i + 1);
 	}
 
+	return 1;
+}
+
+static int GetSolidObjectRootPiece(lua_State* L, const CSolidObject* o)
+{
+	if (o == nullptr)
+		return 0;
+
+	lua_pushnumber(L, o->localModel.GetRoot()->GetLModelPieceIndex() + 1);
 	return 1;
 }
 
@@ -7730,6 +7895,15 @@ static int GetSolidObjectPieceMatrix(lua_State* L, const CSolidObject* o)
 	return 16;
 }
 
+/***
+ *
+ * @function Spring.GetModelRootPiece
+ * @string modelName
+ * @treturn number index of the root piece
+ */
+int LuaSyncedRead::GetModelRootPiece(lua_State* L) {
+	return ::GetModelRootPiece(L, luaL_optsstring(L, 1, ""));
+}
 
 /***
  *
@@ -7752,6 +7926,16 @@ int LuaSyncedRead::GetModelPieceList(lua_State* L) {
 	return ::GetModelPieceList(L, luaL_optsstring(L, 1, ""));
 }
 
+
+/***
+ *
+ * @function Spring.GetUnitRootPiece
+ * @number unitID
+ * @treturn number index of the root piece
+ */
+int LuaSyncedRead::GetUnitRootPiece(lua_State* L) {
+	return (GetSolidObjectRootPiece(L, ParseTypedUnit(L, __func__, 1)));
+}
 
 /***
  *
@@ -7857,6 +8041,15 @@ int LuaSyncedRead::GetUnitPieceMatrix(lua_State* L) {
 	return (GetSolidObjectPieceMatrix(L, ParseTypedUnit(L, __func__, 1)));
 }
 
+/***
+ *
+ * @function Spring.GetFeatureRootPiece
+ * @number featureID
+ * @treturn number index of the root piece
+ */
+int LuaSyncedRead::GetFeatureRootPiece(lua_State* L) {
+	return (GetSolidObjectRootPiece(L, ParseFeature(L, __func__, 1)));
+}
 
 /***
  *

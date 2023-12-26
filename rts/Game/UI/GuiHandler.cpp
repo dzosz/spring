@@ -949,23 +949,16 @@ bool CGuiHandler::LayoutCustomIcons(bool useSelectionPage)
 
 void CGuiHandler::GiveCommand(const Command& cmd, bool fromUser)
 {
-	commandsToGive.push_back(std::pair<const Command, bool>(cmd, fromUser));
+	commandsToGive.emplace_back(cmd, fromUser);
 }
 
 
 void CGuiHandler::GiveCommandsNow() {
-	std::vector< std::pair<Command, bool> > commandsToGiveTemp;
-	{
-		commandsToGiveTemp.swap(commandsToGive);
-	}
-
-	for (const std::pair<Command, bool>& i: commandsToGiveTemp) {
-		const Command& cmd = i.first;
-
+	for (const auto& [cmd, fromUser] : commandsToGive) {
 		if (eventHandler.CommandNotify(cmd))
 			continue;
 
-		selectedUnitsHandler.GiveCommand(cmd, i.second);
+		selectedUnitsHandler.GiveCommand(cmd, fromUser);
 
 		if (!gatherMode)
 			continue;
@@ -974,6 +967,7 @@ void CGuiHandler::GiveCommandsNow() {
 			GiveCommand(Command(CMD_GATHERWAIT), false);
 		}
 	}
+	commandsToGive.clear();
 }
 
 
@@ -2981,8 +2975,8 @@ void CGuiHandler::DrawButtons() // Only called by Draw
 	}
 
 	const int mouseIcon   = IconAtPos(mouse->lastx, mouse->lasty);
-	const int buttonStart = Clamp( activePage * iconsPerPage, 0, iconsCount); // activePage can be -1
-	const int buttonEnd   = Clamp(buttonStart + iconsPerPage, 0, iconsCount);
+	const int buttonStart = std::clamp( activePage * iconsPerPage, 0, iconsCount); // activePage can be -1
+	const int buttonEnd   = std::clamp(buttonStart + iconsPerPage, 0, iconsCount);
 
 	for (int ii = buttonStart; ii < buttonEnd; ii++) {
 		const IconInfo& icon = icons.at(ii);
@@ -3686,8 +3680,7 @@ void CGuiHandler::DrawMapStuff(bool onMiniMap)
 	if ((size_t(inCommand) < commands.size()) && (commands[inCommand].type == CMDTYPE_ICON_BUILDING)) {
 		{
 			// draw build distance for all immobile builders during build commands
-			for (const auto bi: unitHandler.GetBuilderCAIs()) {
-				const CBuilderCAI* builderCAI = bi.second;
+			for (const auto& [bid, builderCAI]: unitHandler.GetBuilderCAIs()) {
 				const CUnit* builder = builderCAI->owner;
 				const UnitDef* builderDef = builder->unitDef;
 
